@@ -37,7 +37,7 @@ const Home = () => {
   return (
     <div className="home-container">
       <div className="hero-section">
-        <h1 className="hero-title">STRIDE University</h1>
+        <h1 className="hero-title">STRIDE</h1>
         <p className="hero-subtitle">
           Plataforma integral de gestión académica universitaria. 
           Tecnología avanzada para la educación del futuro.
@@ -95,7 +95,7 @@ const Home = () => {
         <div className="feature-card">
           <div className="feature-icon">👔</div>
           <h3>Panel Directivo</h3>
-          <p>Gestión de actividades y supervisión del personal de cada dirección.</p>
+          <p>Gestión de actividades y supervisión del personal de su direccion.</p>
         </div>
         
         <div className="feature-card">

@@ -32,10 +32,9 @@ const StrideWelcome = ({ user }) => {
       <div className="stride-mission">
         <h2 className="mission-title">Nuestra Misión</h2>
         <p style={{ fontSize: '1.1rem', lineHeight: '1.8' }}>
-          En STRIDE University nos comprometemos a proporcionar una educación de calidad 
-          a través de tecnología innovadora. Nuestro sistema integrado permite una gestión 
-          académica eficiente, promoviendo el desarrollo integral de nuestros estudiantes 
-          y facilitando el trabajo administrativo y docente.
+          En STRIDE University nos comprometemos a proporcionar una herramienta unica para
+          la gestion de actividades academicas y administrativas, facilitando el desarrollo educativo
+          a traves de tecnologia innovadora y soporte dedicado.
         </p>
       </div>
 
@@ -43,7 +42,7 @@ const StrideWelcome = ({ user }) => {
         <div className="feature-card">
           <div className="feature-icon">📚</div>
           <h3>Gestión Académica</h3>
-          <p>Control completo de materias, horarios y calificaciones</p>
+          <p>Control de actividades realizados o por realizar</p>
         </div>
         
         <div className="feature-card">

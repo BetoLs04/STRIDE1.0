@@ -10,6 +10,7 @@ import SuperAdminDashboard from './components/SuperAdminDashboard';
 import DirectivoDashboard from './components/DirectivoDashboard';
 import PersonalDashboard from './components/PersonalDashboard';
 import StrideWelcome from './components/StrideWelcome';
+import SuperAdminActividades from './components/SuperAdminActividades';
 import Footer from './components/Footer';
 import './styles/App.css';
 
@@ -108,6 +109,12 @@ function App() {
           <Route path="/personal/dashboard" element={
             user && user.tipo === 'personal' ? 
             <PersonalDashboard user={user} /> : 
+            <Navigate to="/login" />
+          } />
+
+          <Route path="/admin/actividades" element={
+            user && user.tipo === 'superadmin' ? 
+            <SuperAdminActividades admin={user} /> : 
             <Navigate to="/login" />
           } />
           

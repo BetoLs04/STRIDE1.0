@@ -150,6 +150,12 @@ const SuperAdminDashboard = ({ admin }) => {
             <span>Nuevo Personal</span>
           </button>
           
+          {/* NUEVO BOTÓN */}
+          <button className="action-btn" onClick={() => navigate('/admin/actividades')}>
+            <span className="action-icon">📋</span>
+            <span>Ver Todas las Actividades</span>
+          </button>
+          
           <button className="action-btn" onClick={fetchData}>
             <span className="action-icon">🔄</span>
             <span>Actualizar Datos</span>
