@@ -7,6 +7,7 @@ const Footer = () => {
         <div className="footer-section">
           <h3>STRIDE</h3>
           <p>
+            Strategic Tracking for Resource Integration, Development and Evaluation.
             Sistema Tecnológico para la Gestión y Desarrollo Educativo.
             Comprometidos con la excelencia académica y la innovación tecnológica.
           </p>
@@ -14,16 +15,20 @@ const Footer = () => {
         
         <div className="footer-section">
           <h3>Contacto</h3>
+          <p>Platform Development</p>
           <p>📧 lazarox200@gmail.com</p>
           <p>📞 +52 449-550-5392</p>
+          <p>Planeación Y Evaluación</p>
+          <p>📧 ctorres@utma.edu.mx</p>
+          <p>📞 +52 449-786-0951</p>
         </div>
         
         <div className="footer-section">
-          <h3>Funciones del sistema:</h3>
-          <p>• Visualización de actividades</p>
-          <p>• Creacion de reportes de actividades.</p>
-          <p>• Paneles indviduales para cada tipo de usuario.</p>
-          <p>• Soporte Técnico</p>
+          <h3>Direcciones Institucionales:</h3>
+          <p>• Dirección Academica</p>
+          <p>• Dirección de Vinculacion</p>
+          <p>• Dirección de Servicios Estudiantiles</p>
+          <p>• Dirección de Desarrollo Institucional y Presupuesto</p>
         </div>
       </div>
       

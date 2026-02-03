@@ -107,32 +107,6 @@ const LoginGeneral = ({ onLogin }) => {
   };
 
   // Credenciales de prueba para desarrollo
-  const handleTestLogin = (type) => {
-    let credentials = {};
-    
-    switch(type) {
-      case 'superadmin':
-        credentials = { email: 'admin@stride.edu', password: 'admin123' };
-        break;
-      case 'directivo':
-        credentials = { email: 'directivo@stride.edu', password: 'directivo123' };
-        break;
-      case 'personal':
-        credentials = { email: 'personal@stride.edu', password: 'personal123' };
-        break;
-    }
-    
-    setFormData(credentials);
-    
-    // Auto-submit después de actualizar el estado
-    setTimeout(() => {
-      const form = document.querySelector('form');
-      if (form) {
-        const submitEvent = new Event('submit', { cancelable: true });
-        form.dispatchEvent(submitEvent);
-      }
-    }, 100);
-  };
 
   if (checkingSuperAdmin) {
     return (
@@ -193,42 +167,13 @@ const LoginGeneral = ({ onLogin }) => {
               {loading ? 'Iniciando...' : 'Iniciar Sesión'}
             </button>
           </div>
-
-          {/* Sección de credenciales de prueba (solo desarrollo) */}
-          <div className="test-credentials-section">
-            <h4>Credenciales de Prueba:</h4>
-            <div className="test-buttons">
-              <button 
-                type="button"
-                className="btn btn-small btn-accent"
-                onClick={() => handleTestLogin('superadmin')}
-                disabled={loading || !superAdminExists}
-              >
-                Super Admin
-              </button>
-              <button 
-                type="button"
-                className="btn btn-small btn-accent"
-                onClick={() => handleTestLogin('directivo')}
-                disabled={loading}
-              >
-                Directivo
-              </button>
-              <button 
-                type="button"
-                className="btn btn-small btn-accent"
-                onClick={() => handleTestLogin('personal')}
-                disabled={loading}
-              >
-                Personal
-              </button>
-            </div>
+          
             {!superAdminExists && (
               <div className="warning-note">
                 <small>⚠️ No hay Super Admin configurado. Contacta al administrador del sistema.</small>
               </div>
             )}
-          </div>
+
 
           <div className="auth-footer">
             {/* Solo mostrar enlace para crear super admin si NO existe ninguno */}

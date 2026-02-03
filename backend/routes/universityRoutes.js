@@ -44,6 +44,37 @@ const upload = multer({
     }
 });
 
+// Configuración de almacenamiento para fotos de personal
+const personalStorage = multer.diskStorage({
+    destination: function (req, file, cb) {
+        const dir = 'uploads/personal';
+        if (!fs.existsSync(dir)) {
+            fs.mkdirSync(dir, { recursive: true });
+        }
+        cb(null, dir);
+    },
+    filename: function (req, file, cb) {
+        const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+        const ext = path.extname(file.originalname);
+        const filename = 'personal-' + uniqueSuffix + ext;
+        cb(null, filename);
+    }
+});
+
+const uploadPersonal = multer({
+    storage: personalStorage,
+    fileFilter: (req, file, cb) => {
+        if (file.mimetype.startsWith('image/')) {
+            cb(null, true);
+        } else {
+            cb(new Error('Solo se permiten imágenes'), false);
+        }
+    },
+    limits: {
+        fileSize: 2 * 1024 * 1024, // 2MB máximo
+    }
+});
+
 // ========== RUTAS BÁSICAS PARA SUPER USERS ==========
 
 // Crear super usuario
@@ -295,6 +326,7 @@ router.get('/estadisticas', async (req, res) => {
         const [[{ total_direcciones }]] = await db.execute('SELECT COUNT(*) as total_direcciones FROM direcciones');
         const [[{ total_directivos }]] = await db.execute('SELECT COUNT(*) as total_directivos FROM directivos');
         const [[{ total_personal }]] = await db.execute('SELECT COUNT(*) as total_personal FROM personal');
+        const [[{ total_comunicados }]] = await db.execute("SELECT COUNT(*) as total_comunicados FROM comunicados WHERE estado = 'publicado'");
         
         res.json({
             success: true,
@@ -302,7 +334,8 @@ router.get('/estadisticas', async (req, res) => {
                 usuarios: total_usuarios,
                 direcciones: total_direcciones,
                 directivos: total_directivos,
-                personal: total_personal
+                personal: total_personal,
+                comunicados: total_comunicados
             }
         });
         
@@ -454,17 +487,49 @@ router.post('/directivos', async (req, res) => {
 // ========== PERSONAL ==========
 router.get('/personal', async (req, res) => {
     try {
+        console.log('📋 Obteniendo todos los registros de personal...');
+        
         const [personal] = await db.execute(
             'SELECT p.*, dir.nombre as direccion_nombre FROM personal p LEFT JOIN direcciones dir ON p.direccion_id = dir.id ORDER BY p.nombre_completo'
         );
         
+        console.log(`✅ Personal encontrado: ${personal.length} registros`);
+        
+        if (personal.length > 0) {
+            console.log('🔍 Primer registro:', {
+                id: personal[0].id,
+                nombre: personal[0].nombre_completo,
+                foto_perfil: personal[0].foto_perfil,
+                tieneFoto: !!personal[0].foto_perfil
+            });
+        }
+        
+        // Añadir URL de foto a cada registro
+        const personalConFotos = personal.map(persona => {
+            const fotoUrl = persona.foto_perfil 
+                ? `http://localhost:5000/api/university/personal/foto/${persona.foto_perfil}`
+                : `http://localhost:5000/api/university/personal/foto/default-avatar.png`;
+            
+            console.log(`   👤 ${persona.nombre_completo}: ${persona.foto_perfil ? 'Tiene foto' : 'Sin foto'} -> ${fotoUrl}`);
+            
+            return {
+                ...persona,
+                foto_url: fotoUrl
+            };
+        });
+        
         res.json({ 
             success: true,
-            data: personal 
+            data: personalConFotos,
+            metadata: {
+                total: personalConFotos.length,
+                conFoto: personal.filter(p => p.foto_perfil).length,
+                sinFoto: personal.filter(p => !p.foto_perfil).length
+            }
         });
         
     } catch (error) {
-        console.error('Error al obtener personal:', error);
+        console.error('❌ Error al obtener personal:', error);
         console.error('Error details:', error.message);
         res.status(500).json({ 
             success: false,
@@ -473,31 +538,207 @@ router.get('/personal', async (req, res) => {
     }
 });
 
-router.post('/personal', async (req, res) => {
+// En universityRoutes.js, añade esta ruta de debugging:
+router.get('/personal/debug-fotos', async (req, res) => {
     try {
-        const { nombre_completo, puesto, direccion_id, email, password } = req.body;
+        const [personal] = await db.execute(
+            'SELECT id, nombre_completo, foto_perfil FROM personal ORDER BY id'
+        );
+        
+        const resultados = [];
+        
+        for (const persona of personal) {
+            let existeArchivo = false;
+            let rutaArchivo = '';
+            
+            if (persona.foto_perfil) {
+                rutaArchivo = path.join('uploads/personal', persona.foto_perfil);
+                existeArchivo = fs.existsSync(rutaArchivo);
+            }
+            
+            resultados.push({
+                id: persona.id,
+                nombre: persona.nombre_completo,
+                foto_perfil: persona.foto_perfil,
+                existe_archivo: existeArchivo,
+                ruta: rutaArchivo,
+                url: persona.foto_perfil 
+                    ? `http://localhost:5000/api/university/personal/foto/${persona.foto_perfil}`
+                    : 'Sin foto'
+            });
+        }
+        
+        res.json({
+            success: true,
+            data: resultados,
+            carpeta: path.resolve('uploads/personal'),
+            archivos_en_carpeta: fs.existsSync('uploads/personal') 
+                ? fs.readdirSync('uploads/personal')
+                : 'Carpeta no existe'
+        });
+        
+    } catch (error) {
+        console.error('Error en debug:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// Obtener un personal específico por ID
+router.get('/personal/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+        console.log(`🔍 Obteniendo personal ID: ${id}`);
+        
+        const [personal] = await db.execute(
+            `SELECT p.*, dir.nombre as direccion_nombre 
+             FROM personal p 
+             LEFT JOIN direcciones dir ON p.direccion_id = dir.id 
+             WHERE p.id = ?`,
+            [id]
+        );
+        
+        if (personal.length === 0) {
+            return res.status(404).json({ 
+                success: false,
+                error: 'Personal no encontrado' 
+            });
+        }
+        
+        const persona = personal[0];
+        
+        // Añadir URL de foto si existe
+        const personaConFoto = {
+            ...persona,
+            foto_url: persona.foto_perfil 
+                ? `http://localhost:5000/api/university/personal/foto/${persona.foto_perfil}`
+                : null
+        };
+        
+        console.log(`✅ Personal encontrado: ${persona.nombre_completo}`, {
+            tieneFoto: !!persona.foto_perfil,
+            foto_perfil: persona.foto_perfil
+        });
+        
+        res.json({ 
+            success: true,
+            data: personaConFoto 
+        });
+        
+    } catch (error) {
+        console.error('Error al obtener personal:', error);
+        res.status(500).json({ 
+            success: false,
+            error: 'Error al obtener personal' 
+        });
+    }
+});
+
+// Ruta para servir fotos de personal
+router.get('/personal/foto/:filename', (req, res) => {
+    try {
+        const { filename } = req.params;
+        const filePath = path.join('uploads/personal', filename);
+        
+        if (fs.existsSync(filePath)) {
+            res.sendFile(path.resolve(filePath));
+        } else {
+            // Si no existe la foto, servir una por defecto
+            const defaultAvatar = path.join(__dirname, '../public/default-avatar.png');
+            if (fs.existsSync(defaultAvatar)) {
+                res.sendFile(defaultAvatar);
+            } else {
+                res.status(404).json({ error: 'Foto no encontrada' });
+            }
+        }
+    } catch (error) {
+        console.error('Error al servir foto:', error);
+        res.status(500).json({ error: 'Error al cargar la foto' });
+    }
+});
+
+// Cambia la ruta actual de POST '/personal' por esta:
+// Ruta para crear personal con foto - VERSIÓN ACTUALIZADA
+router.post('/personal', uploadPersonal.single('foto'), async (req, res) => {
+    try {
+        // Para debugging: mostrar todo lo que llega
+        console.log('📝 Cuerpo recibido:', req.body);
+        console.log('📸 Archivo recibido:', req.file);
+        
+        // Parsear manualmente si es necesario
+        let nombre_completo, puesto, direccion_id, email, password;
+        
+        // Si req.body está vacío, el cliente podría estar enviando FormData
+        // En ese caso, los campos vienen en el FormData
+        if (!req.body || Object.keys(req.body).length === 0) {
+            // Si estamos usando FormData puro, podríamos necesitar otro enfoque
+            return res.status(400).json({
+                success: false,
+                error: 'Los datos deben enviarse como JSON o form-urlencoded'
+            });
+        }
+        
+        // Intentar obtener los datos
+        try {
+            nombre_completo = req.body.nombre_completo;
+            puesto = req.body.puesto;
+            direccion_id = req.body.direccion_id;
+            email = req.body.email;
+            password = req.body.password;
+        } catch (error) {
+            console.error('Error parseando body:', error);
+            return res.status(400).json({
+                success: false,
+                error: 'Error procesando los datos del formulario'
+            });
+        }
+        
+        const foto = req.file;
+        
+        console.log('📝 Datos extraídos:', {
+            nombre_completo, puesto, direccion_id, email,
+            foto: foto ? foto.filename : 'sin_foto'
+        });
         
         if (!nombre_completo || !puesto || !direccion_id || !email || !password) {
+            // Limpiar archivo si hay error
+            if (foto) {
+                try {
+                    fs.unlinkSync(foto.path);
+                } catch (err) {
+                    console.error('Error al limpiar archivo:', err);
+                }
+            }
             return res.status(400).json({ 
                 success: false,
-                error: 'Todos los campos son requeridos' 
+                error: 'Todos los campos son requeridos',
+                campos_recibidos: { nombre_completo, puesto, direccion_id, email }
             });
         }
         
         const hashedPassword = await bcrypt.hash(password, 10);
         
         const [result] = await db.execute(
-            'INSERT INTO personal (nombre_completo, puesto, direccion_id, email, password) VALUES (?, ?, ?, ?, ?)',
-            [nombre_completo, puesto, direccion_id, email, hashedPassword]
+            'INSERT INTO personal (nombre_completo, puesto, direccion_id, email, password, foto_perfil) VALUES (?, ?, ?, ?, ?, ?)',
+            [nombre_completo, puesto, direccion_id, email, hashedPassword, foto ? foto.filename : null]
         );
         
         res.status(201).json({ 
             success: true,
             message: 'Personal creado exitosamente',
-            personalId: result.insertId 
+            personalId: result.insertId,
+            tieneFoto: !!foto
         });
         
     } catch (error) {
+        // Limpiar archivo si hay error
+        if (req.file) {
+            try {
+                fs.unlinkSync(req.file.path);
+            } catch (err) {
+                console.error('Error al limpiar archivo:', err);
+            }
+        }
+        
         if (error.code === 'ER_DUP_ENTRY') {
             return res.status(400).json({ 
                 success: false,
@@ -507,19 +748,21 @@ router.post('/personal', async (req, res) => {
         console.error('Error al crear personal:', error);
         res.status(500).json({ 
             success: false,
-            error: 'Error al crear el personal' 
+            error: 'Error al crear el personal',
+            detalle: error.message
         });
     }
 });
 
 // ========== ACTIVIDADES CON IMÁGENES ==========
 
-// Crear nueva actividad con imágenes
+// Crear nueva actividad con imágenes (CON TIPO_ACTIVIDAD)
 router.post('/actividades', upload.array('imagenes', 5), async (req, res) => {
     try {
         const { 
             titulo, 
             descripcion, 
+            tipo_actividad, // NUEVO: campo de texto para tipo de actividad
             fecha_inicio, 
             fecha_fin, 
             direccion_id, 
@@ -528,7 +771,7 @@ router.post('/actividades', upload.array('imagenes', 5), async (req, res) => {
         } = req.body;
         
         console.log('📝 Datos recibidos:', {
-            titulo, descripcion, fecha_inicio, fecha_fin, direccion_id, 
+            titulo, descripcion, tipo_actividad, fecha_inicio, fecha_fin, direccion_id, 
             creado_por_id, creado_por_tipo
         });
         console.log('📸 Archivos recibidos:', req.files ? req.files.length : 0);
@@ -539,7 +782,8 @@ router.post('/actividades', upload.array('imagenes', 5), async (req, res) => {
             });
         }
         
-        if (!titulo || !fecha_inicio || !direccion_id || !creado_por_id || !creado_por_tipo) {
+        // VALIDACIÓN CON TIPO_ACTIVIDAD
+        if (!titulo || !tipo_actividad || !fecha_inicio || !direccion_id || !creado_por_id || !creado_por_tipo) {
             // Limpiar archivos si hay error
             if (req.files && req.files.length > 0) {
                 req.files.forEach(file => {
@@ -553,7 +797,7 @@ router.post('/actividades', upload.array('imagenes', 5), async (req, res) => {
             }
             return res.status(400).json({ 
                 success: false,
-                error: 'Título, fecha de inicio, dirección, creador y tipo son requeridos' 
+                error: 'Título, tipo de actividad, fecha de inicio, dirección, creador y tipo son requeridos' 
             });
         }
         
@@ -574,12 +818,12 @@ router.post('/actividades', upload.array('imagenes', 5), async (req, res) => {
             });
         }
         
-        // Insertar actividad
+        // Insertar actividad CON TIPO_ACTIVIDAD
         const [result] = await db.execute(
             `INSERT INTO actividades 
-            (titulo, descripcion, fecha_inicio, fecha_fin, direccion_id, creado_por_id, creado_por_tipo, estado) 
-            VALUES (?, ?, ?, ?, ?, ?, ?, 'pendiente')`,
-            [titulo, descripcion || null, fecha_inicio, fecha_fin || null, direccion_id, creado_por_id, creado_por_tipo]
+            (titulo, descripcion, tipo_actividad, fecha_inicio, fecha_fin, direccion_id, creado_por_id, creado_por_tipo, estado) 
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pendiente')`,
+            [titulo, descripcion || null, tipo_actividad, fecha_inicio, fecha_fin || null, direccion_id, creado_por_id, creado_por_tipo]
         );
         
         const actividadId = result.insertId;
@@ -757,6 +1001,7 @@ router.get('/debug/uploads', (req, res) => {
     }
 });
 
+// Obtener TODAS las actividades del sistema
 router.get('/actividades/todas', async (req, res) => {
     try {
         console.log('📋 Obteniendo TODAS las actividades del sistema');
@@ -809,8 +1054,6 @@ router.get('/actividades/todas', async (req, res) => {
         });
     }
 });
-
-// Añadir esta ruta después de las demás rutas de actividades:
 
 // ========== ELIMINAR ACTIVIDAD ==========
 
@@ -904,12 +1147,12 @@ router.delete('/actividades/:id', async (req, res) => {
 
 const logoDir = 'uploads/logos';
 
-// Subir logo (REEMPLAZA totalmente el anterior)
+// Subir logo
 router.post('/upload-logo', async (req, res) => {
   try {
     console.log('📤 Subiendo logo...');
     
-    // Manejo manual del archivo (sin multer complicado)
+    // Manejo manual del archivo
     if (!req.headers['content-type'] || !req.headers['content-type'].includes('multipart/form-data')) {
       return res.status(400).json({
         success: false,
@@ -917,7 +1160,7 @@ router.post('/upload-logo', async (req, res) => {
       });
     }
     
-    // Parsear manualmente (simplificado)
+    // Parsear manualmente
     const busboy = require('busboy');
     const bb = busboy({ headers: req.headers });
     let fileName = '';
@@ -989,7 +1232,7 @@ router.post('/upload-logo', async (req, res) => {
   }
 });
 
-// Eliminar logo (MUY simple)
+// Eliminar logo
 router.delete('/delete-logo', (req, res) => {
   try {
     console.log('🗑️ Eliminando logo...');
@@ -1068,6 +1311,296 @@ router.get('/check-logo', (req, res) => {
       error: error.message
     });
   }
+});
+
+// ========== COMUNICADOS ==========
+
+// Crear nuevo comunicado
+router.post('/comunicados', async (req, res) => {
+    try {
+        const { 
+            titulo, 
+            contenido,
+            link_externo,
+            publicado_por_id
+        } = req.body;
+        
+        console.log('📝 Creando comunicado:', { titulo, publicado_por_id });
+        
+        if (!titulo || !contenido || !publicado_por_id) {
+            return res.status(400).json({ 
+                success: false,
+                error: 'Título, contenido y creador son requeridos' 
+            });
+        }
+        
+        const [result] = await db.execute(
+            `INSERT INTO comunicados 
+            (titulo, contenido, link_externo, publicado_por_id, estado) 
+            VALUES (?, ?, ?, ?, 'publicado')`,
+            [titulo, contenido, link_externo || null, publicado_por_id]
+        );
+        
+        res.status(201).json({ 
+            success: true,
+            message: 'Comunicado publicado exitosamente',
+            comunicadoId: result.insertId 
+        });
+        
+    } catch (error) {
+        console.error('❌ Error al crear comunicado:', error);
+        res.status(500).json({ 
+            success: false,
+            error: error.message || 'Error al crear el comunicado' 
+        });
+    }
+});
+
+// Obtener todos los comunicados (con nombre del publicador)
+router.get('/comunicados', async (req, res) => {
+    try {
+        console.log('📢 Obteniendo todos los comunicados públicos...');
+        
+        const [comunicados] = await db.execute(`
+            SELECT c.*, 
+                   su.username as publicado_por_nombre
+            FROM comunicados c
+            LEFT JOIN super_users su ON c.publicado_por_id = su.id
+            WHERE c.estado = 'publicado'
+            ORDER BY c.fecha_publicacion DESC
+        `);
+        
+        console.log(`✅ Comunicados públicos encontrados: ${comunicados.length}`);
+        
+        res.json({ 
+            success: true,
+            data: comunicados 
+        });
+        
+    } catch (error) {
+        console.error('❌ Error al obtener comunicados:', error);
+        res.status(500).json({ 
+            success: false,
+            error: 'Error al obtener comunicados' 
+        });
+    }
+});
+
+// Obtener comunicados para administración (incluye todos los estados)
+router.get('/comunicados-admin', async (req, res) => {
+    try {
+        console.log('📢 Obteniendo todos los comunicados para administración...');
+        
+        const [comunicados] = await db.execute(`
+            SELECT c.*, 
+                   su.username as publicado_por_nombre
+            FROM comunicados c
+            LEFT JOIN super_users su ON c.publicado_por_id = su.id
+            ORDER BY c.fecha_publicacion DESC
+        `);
+        
+        console.log(`✅ Comunicados admin encontrados: ${comunicados.length}`);
+        
+        res.json({ 
+            success: true,
+            data: comunicados 
+        });
+        
+    } catch (error) {
+        console.error('❌ Error al obtener comunicados para admin:', error);
+        res.status(500).json({ 
+            success: false,
+            error: 'Error al obtener comunicados' 
+        });
+    }
+});
+
+// Obtener comunicado específico
+router.get('/comunicados/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+        
+        const [comunicados] = await db.execute(`
+            SELECT c.*, 
+                   su.username as publicado_por_nombre
+            FROM comunicados c
+            LEFT JOIN super_users su ON c.publicado_por_id = su.id
+            WHERE c.id = ?
+        `, [id]);
+        
+        if (comunicados.length === 0) {
+            return res.status(404).json({ 
+                success: false,
+                error: 'Comunicado no encontrado' 
+            });
+        }
+        
+        res.json({ 
+            success: true,
+            data: comunicados[0] 
+        });
+        
+    } catch (error) {
+        console.error('Error al obtener comunicado:', error);
+        res.status(500).json({ 
+            success: false,
+            error: 'Error al obtener comunicado' 
+        });
+    }
+});
+
+// Actualizar comunicado
+router.put('/comunicados/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { titulo, contenido, link_externo, estado } = req.body;
+        
+        const [result] = await db.execute(
+            `UPDATE comunicados 
+             SET titulo = ?, contenido = ?, link_externo = ?, estado = ?
+             WHERE id = ?`,
+            [titulo, contenido, link_externo || null, estado, id]
+        );
+        
+        if (result.affectedRows === 0) {
+            return res.status(404).json({ 
+                success: false,
+                error: 'Comunicado no encontrado' 
+            });
+        }
+        
+        res.json({ 
+            success: true,
+            message: 'Comunicado actualizado exitosamente'
+        });
+        
+    } catch (error) {
+        console.error('Error al actualizar comunicado:', error);
+        res.status(500).json({ 
+            success: false,
+            error: 'Error al actualizar comunicado' 
+        });
+    }
+});
+
+// Eliminar comunicado
+router.delete('/comunicados/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+        
+        const [result] = await db.execute(
+            'DELETE FROM comunicados WHERE id = ?',
+            [id]
+        );
+        
+        if (result.affectedRows === 0) {
+            return res.status(404).json({ 
+                success: false,
+                error: 'Comunicado no encontrado' 
+            });
+        }
+        
+        res.json({ 
+            success: true,
+            message: 'Comunicado eliminado exitosamente'
+        });
+        
+    } catch (error) {
+        console.error('Error al eliminar comunicado:', error);
+        res.status(500).json({ 
+            success: false,
+            error: 'Error al eliminar comunicado' 
+        });
+    }
+});
+
+// Obtener comunicados recientes con límite específico - VERSIÓN CORREGIDA
+// Obtener comunicados recientes - SOLUCIÓN DEFINITIVA
+router.get('/comunicados-recientes', async (req, res) => {
+    try {
+        // Obtener límite de query string
+        const limitParam = req.query.limit;
+        
+        // Validación y conversión
+        let limit = 5; // Valor por defecto
+        
+        if (limitParam !== undefined && limitParam !== null && limitParam !== '') {
+            const parsed = parseInt(limitParam, 10);
+            if (!isNaN(parsed) && parsed > 0) {
+                limit = Math.min(parsed, 100); // Máximo 100 por seguridad
+            }
+        }
+        
+        console.log(`📢 Obteniendo ${limit} comunicados recientes...`);
+        
+        // CONSULTA DIRECTA - Evitamos parámetros preparados para LIMIT
+        // Esto es seguro porque validamos manualmente que limit es un número
+        const query = `
+            SELECT c.*, 
+                   su.username as publicado_por_nombre
+            FROM comunicados c
+            LEFT JOIN super_users su ON c.publicado_por_id = su.id
+            WHERE c.estado = 'publicado'
+            ORDER BY c.fecha_publicacion DESC
+            LIMIT ${limit}
+        `;
+        
+        const [comunicados] = await db.execute(query);
+        
+        console.log(`✅ Comunicados recientes encontrados: ${comunicados.length}`);
+        
+        res.json({ 
+            success: true,
+            data: comunicados,
+            limit: limit
+        });
+        
+    } catch (error) {
+        console.error('❌ Error al obtener comunicados recientes:', error);
+        
+        // Respuesta de error más informativa
+        res.status(500).json({ 
+            success: false,
+            error: 'Error al obtener comunicados',
+            details: process.env.NODE_ENV === 'development' ? error.message : undefined
+        });
+    }
+});
+
+// Versión alternativa con query nativa (más compatible)
+router.get('/comunicados-recientes-alt', async (req, res) => {
+    try {
+        const limitParam = req.query.limit || 5;
+        const limit = Math.min(parseInt(limitParam) || 5, 100);
+        
+        console.log(`📢 Obteniendo ${limit} comunicados (método alternativo)...`);
+        
+        // Usar query en lugar de execute para evitar problemas con parámetros
+        const sql = `
+            SELECT c.*, 
+                   su.username as publicado_por_nombre
+            FROM comunicados c
+            LEFT JOIN super_users su ON c.publicado_por_id = su.id
+            WHERE c.estado = 'publicado'
+            ORDER BY c.fecha_publicacion DESC
+            LIMIT ${db.escape(limit)}
+        `;
+        
+        const [comunicados] = await db.query(sql);
+        
+        res.json({ 
+            success: true,
+            data: comunicados,
+            limit: limit
+        });
+        
+    } catch (error) {
+        console.error('Error:', error);
+        res.status(500).json({ 
+            success: false,
+            error: 'Error al obtener comunicados' 
+        });
+    }
 });
 
 module.exports = router;

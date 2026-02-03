@@ -12,6 +12,10 @@ const FormNuevoPersonal = ({ admin, onClose, onSuccess }) => {
     confirmPassword: ''
   });
   
+  // NUEVO: Estado para la foto
+  const [foto, setFoto] = useState(null);
+  const [fotoPreview, setFotoPreview] = useState(null);
+  
   const [direcciones, setDirecciones] = useState([]);
   const [loading, setLoading] = useState(false);
   const [loadingDirecciones, setLoadingDirecciones] = useState(true);
@@ -38,6 +42,39 @@ const FormNuevoPersonal = ({ admin, onClose, onSuccess }) => {
     });
   };
 
+  // NUEVO: Manejar selección de foto
+  const handleFotoChange = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      // Validar que sea una imagen
+      if (!file.type.startsWith('image/')) {
+        toast.error('Por favor, selecciona un archivo de imagen');
+        return;
+      }
+      
+      // Validar tamaño (max 2MB)
+      if (file.size > 2 * 1024 * 1024) {
+        toast.error('La imagen es demasiado grande. Máximo 2MB');
+        return;
+      }
+      
+      setFoto(file);
+      
+      // Crear preview
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setFotoPreview(reader.result);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  // NUEVO: Eliminar foto seleccionada
+  const handleRemoveFoto = () => {
+    setFoto(null);
+    setFotoPreview(null);
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     
@@ -60,15 +97,28 @@ const FormNuevoPersonal = ({ admin, onClose, onSuccess }) => {
     setLoading(true);
     
     try {
-      await axios.post('http://localhost:5000/api/university/personal', {
-        nombre_completo: formData.nombre_completo,
-        puesto: formData.puesto,
-        direccion_id: formData.direccion_id,
-        email: formData.email,
-        password: formData.password
+      // Crear FormData para enviar la foto
+      const formDataToSend = new FormData();
+      formDataToSend.append('nombre_completo', formData.nombre_completo);
+      formDataToSend.append('puesto', formData.puesto);
+      formDataToSend.append('direccion_id', formData.direccion_id);
+      formDataToSend.append('email', formData.email);
+      formDataToSend.append('password', formData.password);
+      
+      // Agregar la foto si existe
+      if (foto) {
+        formDataToSend.append('foto', foto);
+      }
+      
+      await axios.post('http://localhost:5000/api/university/personal', formDataToSend, {
+        headers: {
+          'Content-Type': 'multipart/form-data'
+        }
       });
       
       toast.success('Personal creado exitosamente!');
+      
+      // Reset form
       setFormData({
         nombre_completo: '',
         puesto: '',
@@ -77,6 +127,8 @@ const FormNuevoPersonal = ({ admin, onClose, onSuccess }) => {
         password: '',
         confirmPassword: ''
       });
+      setFoto(null);
+      setFotoPreview(null);
       
       if (onSuccess) onSuccess();
       if (onClose) onClose();
@@ -101,6 +153,51 @@ const FormNuevoPersonal = ({ admin, onClose, onSuccess }) => {
         
         <form onSubmit={handleSubmit}>
           <div className="form-grid">
+            {/* NUEVO: Campo para foto de perfil */}
+            <div className="form-group full-width">
+              <label>Foto de Perfil (Opcional)</label>
+              <div className="foto-upload-section">
+                <div className="foto-preview-container">
+                  {fotoPreview ? (
+                    <div className="foto-preview-with-remove">
+                      <img 
+                        src={fotoPreview} 
+                        alt="Vista previa" 
+                        className="foto-preview-img"
+                      />
+                      <button 
+                        type="button" 
+                        className="remove-foto-btn"
+                        onClick={handleRemoveFoto}
+                        title="Eliminar foto"
+                      >
+                        ×
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="foto-placeholder">
+                      <span className="placeholder-icon">👤</span>
+                      <span className="placeholder-text">Sin foto</span>
+                    </div>
+                  )}
+                </div>
+                
+                <div className="foto-upload-controls">
+                  <input
+                    type="file"
+                    id="foto-input"
+                    accept="image/*"
+                    onChange={handleFotoChange}
+                    className="foto-input-hidden"
+                  />
+                  <label htmlFor="foto-input" className="btn-upload-foto">
+                    {fotoPreview ? 'Cambiar Foto' : 'Seleccionar Foto'}
+                  </label>
+                  <small className="upload-hint">Formatos: JPG, PNG, GIF • Máx: 2MB</small>
+                </div>
+              </div>
+            </div>
+            
             <div className="form-group">
               <label>Nombre Completo *</label>
               <input

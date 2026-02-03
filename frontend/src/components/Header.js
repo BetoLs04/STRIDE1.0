@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { toast } from 'react-toastify';
 import axios from 'axios';
@@ -6,28 +6,47 @@ import axios from 'axios';
 const Header = ({ user, onLogout }) => {
   const navigate = useNavigate();
   const [logoUrl, setLogoUrl] = useState(null);
+  const [strideLogoUrl, setStrideLogoUrl] = useState(null);
   const [showLogoUpload, setShowLogoUpload] = useState(false);
   const [logoFile, setLogoFile] = useState(null);
   const [uploadingLogo, setUploadingLogo] = useState(false);
+  const [showUserMenu, setShowUserMenu] = useState(false);
+  const [userPhoto, setUserPhoto] = useState(null);
+  const [userFullData, setUserFullData] = useState(null);
+  const userMenuRef = useRef(null);
 
-  // Cargar logo al montar
+  // Cargar logos y foto del usuario al montar
   useEffect(() => {
     loadLogo();
+    loadStrideLogo();
+    if (user) {
+      loadUserData();
+    }
+  }, [user]);
+
+  // Cerrar menú al hacer click fuera
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (userMenuRef.current && !userMenuRef.current.contains(event.target)) {
+        setShowUserMenu(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
   }, []);
 
   const loadLogo = () => {
-    // URL base del logo
     const baseUrl = 'http://localhost:5000/uploads/logos/institution-logo';
     
-    // Probar extensiones comunes
     const extensions = ['.webp', '.png', '.jpg', '.jpeg', '.gif', '.svg'];
     
-    // Crear un array de promesas para probar cada extensión
     const imagePromises = extensions.map(ext => {
       return new Promise((resolve) => {
         const img = new Image();
         img.onload = () => {
-          console.log(`✅ Logo encontrado: ${baseUrl}${ext}`);
           resolve({ found: true, url: baseUrl + ext });
         };
         img.onerror = () => {
@@ -37,17 +56,121 @@ const Header = ({ user, onLogout }) => {
       });
     });
 
-    // Esperar a que se resuelvan todas las promesas
     Promise.all(imagePromises).then(results => {
       const foundLogo = results.find(result => result.found);
       if (foundLogo) {
         setLogoUrl(foundLogo.url);
-        console.log('Logo cargado:', foundLogo.url);
       } else {
-        console.log('ℹ️ No hay logo configurado. Mostrando opción para agregar.');
         setLogoUrl(null);
       }
     });
+  };
+
+  const loadStrideLogo = () => {
+    // Cargar el logo de STRIDE desde la ruta especificada
+    const logoPath = 'http://localhost:5000/uploads/logo_app/STRIDE%20WITHE%20LETTERS.png';
+    
+    const img = new Image();
+    img.onload = () => {
+      console.log('✅ Logo de STRIDE cargado correctamente');
+      setStrideLogoUrl(logoPath);
+    };
+    img.onerror = () => {
+      console.log('❌ Error al cargar el logo de STRIDE, usando alternativo');
+      // Intentar con una ruta alternativa
+      const alternativePath = 'http://localhost:5000/uploads/logo_app/stride-logo.png';
+      const img2 = new Image();
+      img2.onload = () => {
+        setStrideLogoUrl(alternativePath);
+      };
+      img2.onerror = () => {
+        setStrideLogoUrl(null);
+      };
+      img2.src = alternativePath;
+    };
+    img.src = logoPath;
+  };
+
+  const loadUserData = async () => {
+    if (!user) return;
+
+    console.log('🔍 Cargando datos completos para usuario:', {
+      id: user.id,
+      tipo: user.tipo,
+      email: user.email
+    });
+
+    try {
+      const response = await axios.get('http://localhost:5000/api/university/personal');
+      
+      if (response.data.success) {
+        const allPersonal = response.data.data || [];
+        console.log(`✅ Personal obtenido: ${allPersonal.length} registros`);
+        
+        const currentUserData = allPersonal.find(p => p.id === user.id);
+        
+        if (currentUserData) {
+          console.log('✅ Usuario encontrado en la lista:', {
+            nombre: currentUserData.nombre_completo,
+            tieneFoto: !!currentUserData.foto_perfil,
+            foto_perfil: currentUserData.foto_perfil
+          });
+          
+          setUserFullData(currentUserData);
+          
+          if (currentUserData.foto_perfil) {
+            loadUserPhoto(currentUserData.foto_perfil);
+          } else {
+            setUserPhoto(null);
+          }
+        } else {
+          console.log('⚠️ Usuario no encontrado en la lista de personal');
+          setUserPhoto(null);
+        }
+      }
+    } catch (error) {
+      console.error('❌ Error obteniendo lista de personal:', error);
+      setUserPhoto(null);
+    }
+  };
+
+  const loadUserPhoto = (fotoPerfil) => {
+    if (!fotoPerfil) {
+      setUserPhoto(null);
+      return;
+    }
+
+    console.log('📸 Cargando foto:', fotoPerfil);
+    
+    const urlsToTry = [
+      `http://localhost:5000/api/university/personal/foto/${fotoPerfil}`,
+      `http://localhost:5000/uploads/personal/${fotoPerfil}`,
+      `http://localhost:5000/api/university/personal/foto/default-avatar.png`
+    ];
+
+    const tryLoadImage = (index) => {
+      if (index >= urlsToTry.length) {
+        console.log('❌ Todas las URLs fallaron');
+        setUserPhoto(null);
+        return;
+      }
+
+      const url = urlsToTry[index];
+      console.log(`🔄 Probando URL ${index + 1}: ${url}`);
+
+      const img = new Image();
+      img.onload = () => {
+        console.log(`✅ Foto cargada desde: ${url}`);
+        setUserPhoto(url);
+      };
+      img.onerror = () => {
+        console.log(`❌ Falló URL: ${url}`);
+        tryLoadImage(index + 1);
+      };
+      img.src = url;
+    };
+
+    tryLoadImage(0);
   };
 
   const handleLogoUpload = async () => {
@@ -59,8 +182,6 @@ const Header = ({ user, onLogout }) => {
     setUploadingLogo(true);
     
     try {
-      console.log('📤 Subiendo logo...', logoFile.name);
-      
       const formData = new FormData();
       formData.append('logo', logoFile);
       formData.append('uploaded_by', user?.username || 'system');
@@ -72,14 +193,11 @@ const Header = ({ user, onLogout }) => {
         }
       });
 
-      console.log('✅ Logo subido:', response.data);
-
       if (response.data.success) {
         toast.success('Logo actualizado correctamente');
         setShowLogoUpload(false);
         setLogoFile(null);
         
-        // Forzar recarga de la página para mostrar el nuevo logo
         setTimeout(() => {
           window.location.reload();
         }, 1000);
@@ -103,7 +221,6 @@ const Header = ({ user, onLogout }) => {
       if (response.data.success) {
         toast.success('Logo eliminado correctamente');
         setLogoUrl(null);
-        // Recargar para quitar el logo
         setTimeout(() => {
           window.location.reload();
         }, 500);
@@ -118,30 +235,25 @@ const Header = ({ user, onLogout }) => {
     const file = e.target.files[0];
     if (!file) return;
 
-    // Validar que sea una imagen
     if (!file.type.startsWith('image/')) {
       toast.error('Solo se permiten archivos de imagen');
       return;
     }
 
-    // Validar tamaño (máximo 2MB)
     if (file.size > 2 * 1024 * 1024) {
       toast.error('El logo debe ser menor a 2MB');
       return;
     }
 
-    // Leer dimensiones de la imagen
     const img = new Image();
     img.onload = function() {
       const width = this.width;
       const height = this.height;
       
-      // Recomendar logos horizontales
       if (height > width) {
         toast.warning('Recomendación: Los logos horizontales se ven mejor');
       }
       
-      // Guardar dimensiones en el objeto file
       file.width = width;
       file.height = height;
       setLogoFile(file);
@@ -150,6 +262,7 @@ const Header = ({ user, onLogout }) => {
   };
 
   const handleLogout = () => {
+    setShowUserMenu(false);
     localStorage.removeItem('stride_user');
     if (onLogout) onLogout();
     toast.info('Sesión cerrada correctamente');
@@ -176,65 +289,86 @@ const Header = ({ user, onLogout }) => {
     }
   };
 
+  const getUserInitials = () => {
+    if (!user) return '?';
+    
+    const name = user.nombre || user.username || 'Usuario';
+    return name
+      .split(' ')
+      .map(word => word.charAt(0).toUpperCase())
+      .join('')
+      .slice(0, 2);
+  };
+
+  const getDisplayName = () => {
+    if (!user) return '';
+    return user.nombre || user.username || 'Usuario';
+  };
+
   return (
-  <header className="university-header">
-    <div className="header-content">
-      <div className="logo-container">
-        {/* STRIDE a la izquierda */}
-        <div className="stride-logo-section">
-          <div className="logo-icon">🎓</div>
-          <div className="logo-text">
-            <h1>STRIDE</h1>
-            <p className="subtitle">Sistema de Gestión de actividades universitarias</p>
+    <header className="university-header">
+      <div className="header-content">
+        <div className="logo-container">
+          {/* Logo de STRIDE - Versión pequeña */}
+          <div className="stride-logo-section">
+            {strideLogoUrl ? (
+              <div className="stride-logo-container-small">
+                <img 
+                  src={strideLogoUrl} 
+                  alt="STRIDE" 
+                  className="stride-logo-small"
+                  title="STRIDE - Sistema de Gestión de actividades universitarias"
+                />
+              </div>
+            ) : (
+              <div className="logo-icon-small">🎓</div>
+            )}
+          </div>
+
+          {/* Logo de la institución */}
+          <div className="institution-logo-section">
+            {logoUrl ? (
+              <div className="logo-with-controls">
+                <div className="institution-logo-container">
+                  <img 
+                    src={logoUrl} 
+                    alt="Logo de la Institución" 
+                    className="institution-logo"
+                  />
+                </div>
+                
+                {user?.tipo === 'superadmin' && (
+                  <button 
+                    className="btn-logo-action"
+                    onClick={() => setShowLogoUpload(true)}
+                    title="Cambiar logo"
+                  >
+                    Cambiar
+                  </button>
+                )}
+              </div>
+            ) : (
+              user?.tipo === 'superadmin' && (
+                <div className="no-logo-section">
+                  <div className="no-logo-message">
+                    <span className="no-logo-icon">🏫</span>
+                    <span className="no-logo-text">Sin logo</span>
+                  </div>
+                  <button 
+                    className="btn-add-logo"
+                    onClick={() => setShowLogoUpload(true)}
+                    title="Agregar logo"
+                  >
+                    + Agregar
+                  </button>
+                </div>
+              )
+            )}
           </div>
         </div>
 
-        {/* Logo de la institución */}
-        <div className="institution-logo-section">
-          {logoUrl ? (
-            <div className="logo-with-controls">
-              <div className="institution-logo-container">
-                <img 
-                  src={logoUrl} 
-                  alt="Logo de la Institución" 
-                  className="institution-logo"
-                />
-              </div>
-              
-              {/* Botón al lado derecho del logo */}
-              {user?.tipo === 'superadmin' && (
-                <button 
-                  className="btn-logo-action"
-                  onClick={() => setShowLogoUpload(true)}
-                  title="Cambiar logo"
-                >
-                  Cambiar
-                </button>
-              )}
-            </div>
-          ) : (
-            /* Si no hay logo */
-            user?.tipo === 'superadmin' && (
-              <div className="no-logo-section">
-                <div className="no-logo-message">
-                  <span className="no-logo-icon">🏫</span>
-                  <span className="no-logo-text">Sin logo</span>
-                </div>
-                <button 
-                  className="btn-add-logo"
-                  onClick={() => setShowLogoUpload(true)}
-                  title="Agregar logo"
-                >
-                  + Agregar
-                </button>
-              </div>
-            )
-          )}
-        </div>
-      </div>
-
-      {/* Modal simplificado */}
-      {showLogoUpload && (
+        {/* Modal para logo */}
+        {showLogoUpload && (
           <div className="logo-upload-modal-overlay" onClick={() => setShowLogoUpload(false)}>
             <div className="logo-upload-modal" onClick={(e) => e.stopPropagation()}>
               <div className="modal-header">
@@ -251,7 +385,6 @@ const Header = ({ user, onLogout }) => {
               </div>
               
               <div className="logo-upload-form">
-                {/* Logo actual (si existe) */}
                 {logoUrl && (
                   <div className="current-logo-compact">
                     <p className="section-label">Logo actual:</p>
@@ -272,7 +405,6 @@ const Header = ({ user, onLogout }) => {
                   </div>
                 )}
                 
-                {/* Área de subida */}
                 <div className="upload-area">
                   <p className="section-label">Nuevo logo:</p>
                   
@@ -309,7 +441,6 @@ const Header = ({ user, onLogout }) => {
                     </div>
                   </label>
                   
-                  {/* Vista previa compacta */}
                   {logoFile && (
                     <div className="preview-compact">
                       <img 
@@ -322,7 +453,6 @@ const Header = ({ user, onLogout }) => {
                   )}
                 </div>
                 
-                {/* Acciones */}
                 <div className="modal-actions-compact">
                   <button
                     className="btn btn-secondary"
@@ -352,23 +482,79 @@ const Header = ({ user, onLogout }) => {
           {user ? (
             <>
               <Link to={getDashboardPath()} className="nav-link">
-                Panel de Control
+                Mis actividades
               </Link>
               
-              <div className="user-info">
-                <div className="user-avatar">
-                  {(user.nombre || user.username || 'A').charAt(0).toUpperCase()}
-                </div>
-                <div className="user-details-small">
-                  <div className="user-name">{user.nombre || user.username}</div>
-                  <div className="user-role">{getUserRole()}</div>
-                </div>
+              {/* Perfil del usuario */}
+              <div className="user-profile-compact" ref={userMenuRef}>
                 <button 
-                  onClick={handleLogout}
-                  className="btn btn-small btn-secondary"
+                  className="user-avatar-btn"
+                  onClick={() => setShowUserMenu(!showUserMenu)}
+                  title="Mi cuenta"
                 >
-                  Salir
+                  {userPhoto ? (
+                    <img 
+                      src={userPhoto} 
+                      alt={getDisplayName()}
+                      className="avatar-photo"
+                    />
+                  ) : (
+                    <div className="avatar-circle">
+                      {getUserInitials()}
+                    </div>
+                  )}
                 </button>
+                
+                {/* Menú desplegable */}
+                {showUserMenu && (
+                  <div className="user-dropdown-menu">
+                    <div className="dropdown-header">
+                      <div className="dropdown-avatar">
+                        {userPhoto ? (
+                          <img 
+                            src={userPhoto} 
+                            alt={getDisplayName()}
+                            className="avatar-photo-large"
+                          />
+                        ) : (
+                          <div className="avatar-circle-large">
+                            {getUserInitials()}
+                          </div>
+                        )}
+                      </div>
+                      <div className="dropdown-user-info">
+                        <div className="dropdown-greeting">
+                          ¡Hola, <strong>{getDisplayName()}!</strong>
+                        </div>
+                        <div className="dropdown-role">
+                          {getUserRole()}
+                        </div>
+                        <div className="dropdown-email">
+                          {user.email}
+                        </div>
+                        {userFullData?.foto_perfil && (
+                          <div className="dropdown-photo-info">
+                            <small>
+                              ID: {user.id} • Foto: {userFullData.foto_perfil}
+                            </small>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                    
+                    <div className="dropdown-divider"></div>
+                    
+                    <div className="dropdown-actions">
+                      <button 
+                        className="dropdown-item logout-item"
+                        onClick={handleLogout}
+                      >
+                        <span className="dropdown-icon">🚪</span>
+                        <span>Cerrar Sesión</span>
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             </>
           ) : (

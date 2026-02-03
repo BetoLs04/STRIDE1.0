@@ -5,6 +5,7 @@ import { toast } from 'react-toastify';
 import FormNuevaDireccion from './FormNuevaDireccion';
 import FormNuevoDirectivo from './FormNuevoDirectivo';
 import FormNuevoPersonal from './FormNuevoPersonal';
+import PanelComunicadosAdmin from './PanelComunicadosAdmin';
 
 const SuperAdminDashboard = ({ admin }) => {
   const navigate = useNavigate();
@@ -25,7 +26,8 @@ const SuperAdminDashboard = ({ admin }) => {
     usuarios: 0, 
     direcciones: 0, 
     directivos: 0, 
-    personal: 0 
+    personal: 0,
+    comunicados: 0
   });
   
   const [loading, setLoading] = useState(true);
@@ -43,12 +45,40 @@ const SuperAdminDashboard = ({ admin }) => {
     setLoading(true);
     try {
       console.log('🔍 Iniciando carga de datos...');
+
+      try {
+        const persRes = await axios.get('http://localhost:5000/api/university/personal');
+        const personalData = persRes.data.data || [];
+        
+        console.log('👤 DEBUG - Datos de personal recibidos:', {
+          total: personalData.length,
+          primerRegistro: personalData[0] ? {
+            nombre: personalData[0].nombre_completo,
+            tieneFotoPerfil: !!personalData[0].foto_perfil,
+            fotoPerfil: personalData[0].foto_perfil,
+            tieneFotoUrl: !!personalData[0].foto_url,
+            fotoUrl: personalData[0].foto_url,
+            todosLosCampos: Object.keys(personalData[0])
+          } : 'No hay datos'
+        });
+        
+        setPersonal(personalData);
+        console.log('👤 Personal:', personalData.length);
+      } catch (error) {
+        console.warn('⚠️ Error cargando personal:', error.message);
+      }
       
       // 1. Obtener estadísticas
       try {
         const statsRes = await axios.get('http://localhost:5000/api/university/estadisticas');
         console.log('📊 Estadísticas:', statsRes.data);
-        setEstadisticas(statsRes.data.data || { usuarios: 0, direcciones: 0, directivos: 0, personal: 0 });
+        setEstadisticas(statsRes.data.data || { 
+          usuarios: 0, 
+          direcciones: 0, 
+          directivos: 0, 
+          personal: 0,
+          comunicados: 0
+        });
       } catch (error) {
         console.warn('⚠️ Error cargando estadísticas:', error.message);
       }
@@ -87,6 +117,19 @@ const SuperAdminDashboard = ({ admin }) => {
         setPersonal(persRes.data.data || []);
       } catch (error) {
         console.warn('⚠️ Error cargando personal:', error.message);
+      }
+
+      // 6. Obtener estadísticas de comunicados
+      try {
+        const comRes = await axios.get('http://localhost:5000/api/university/comunicados-admin');
+        const comunicados = comRes.data.data || [];
+        setEstadisticas(prev => ({
+          ...prev,
+          comunicados: comunicados.length
+        }));
+        console.log('📢 Comunicados:', comunicados.length);
+      } catch (error) {
+        console.warn('⚠️ Error cargando comunicados:', error.message);
       }
 
       console.log('✅ Datos cargados exitosamente');
@@ -130,6 +173,12 @@ const SuperAdminDashboard = ({ admin }) => {
           <span className="stat-label">Personal</span>
           <div className="stat-icon">👤</div>
         </div>
+        
+        <div className="stat-card" onClick={() => setActiveTab('comunicados')}>
+          <span className="stat-number">{estadisticas.comunicados || 0}</span>
+          <span className="stat-label">Comunicados</span>
+          <div className="stat-icon">📢</div>
+        </div>
       </div>
 
       <div className="quick-actions">
@@ -150,7 +199,11 @@ const SuperAdminDashboard = ({ admin }) => {
             <span>Nuevo Personal</span>
           </button>
           
-          {/* NUEVO BOTÓN */}
+          <button className="action-btn" onClick={() => setActiveTab('comunicados')}>
+            <span className="action-icon">📢</span>
+            <span>Gestionar Comunicados</span>
+          </button>
+          
           <button className="action-btn" onClick={() => navigate('/admin/actividades')}>
             <span className="action-icon">📋</span>
             <span>Ver Todas las Actividades</span>
@@ -330,56 +383,97 @@ const SuperAdminDashboard = ({ admin }) => {
   );
 
   const renderPersonal = () => (
-    <div className="tab-content">
-      <div className="tab-header">
-        <h2>👥 Personal Administrativo</h2>
-        <div className="tab-actions">
-          <button className="btn btn-secondary" onClick={() => setActiveTab('dashboard')}>
-            ← Volver al Dashboard
-          </button>
-          <button className="btn btn-primary" onClick={() => setShowFormPersonal(true)}>
-            + Nuevo Personal
-          </button>
-        </div>
+  <div className="tab-content">
+    <div className="tab-header">
+      <h2>👥 Personal Administrativo</h2>
+      <div className="tab-actions">
+        <button className="btn btn-secondary" onClick={() => setActiveTab('dashboard')}>
+          ← Volver al Dashboard
+        </button>
+        <button className="btn btn-primary" onClick={() => setShowFormPersonal(true)}>
+          + Nuevo Personal
+        </button>
       </div>
-      
-      {loading ? (
-        <div className="loading">Cargando personal...</div>
-      ) : personal.length === 0 ? (
-        <div className="no-data">
-          <p>No hay personal registrado</p>
-          <button className="btn btn-primary" onClick={() => setShowFormPersonal(true)}>
-            Crear Primer Personal
-          </button>
-        </div>
-      ) : (
-        <div className="table-responsive">
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th>Nombre</th>
-                <th>Puesto</th>
-                <th>Dirección</th>
-                <th>Email</th>
-                <th>Fecha de Registro</th>
-              </tr>
-            </thead>
-            <tbody>
-              {personal.map(pers => (
+    </div>
+    
+    {loading ? (
+      <div className="loading">Cargando personal...</div>
+    ) : personal.length === 0 ? (
+      <div className="no-data">
+        <p>No hay personal registrado</p>
+        <button className="btn btn-primary" onClick={() => setShowFormPersonal(true)}>
+          Crear Primer Personal
+        </button>
+      </div>
+    ) : (
+      <div className="table-responsive">
+        <table className="data-table">
+          <thead>
+            <tr>
+              <th>Foto</th>
+              <th>Nombre</th>
+              <th>Puesto</th>
+              <th>Dirección</th>
+              <th>Email</th>
+              <th>Fecha de Registro</th>
+            </tr>
+          </thead>
+          <tbody>
+            {personal.map(pers => {
+              // Construir URL de la foto manualmente
+              const fotoUrl = pers.foto_perfil 
+                ? `http://localhost:5000/api/university/personal/foto/${pers.foto_perfil}`
+                : `http://localhost:5000/api/university/personal/foto/default-avatar.png`;
+              
+              return (
                 <tr key={pers.id}>
-                  <td><strong>{pers.nombre_completo}</strong></td>
+                  <td>
+                    <div className="personal-foto-cell">
+                      <img 
+                        src={fotoUrl}
+                        alt={pers.nombre_completo}
+                        className="personal-foto"
+                        onError={(e) => {
+                          console.error(`Error cargando foto para ${pers.nombre_completo}:`, pers.foto_perfil);
+                          e.target.src = 'http://localhost:5000/api/university/personal/foto/default-avatar.png';
+                        }}
+                      />
+                    </div>
+                  </td>
+                  <td>
+                    <strong>{pers.nombre_completo}</strong>
+                    {pers.foto_perfil && (
+                      <span style={{ 
+                        fontSize: '0.7rem', 
+                        color: 'green',
+                        marginLeft: '5px'
+                      }}>
+                        (con foto)
+                      </span>
+                    )}
+                  </td>
                   <td>{pers.puesto}</td>
                   <td>{pers.direccion_nombre || 'Sin asignar'}</td>
                   <td>{pers.email}</td>
                   <td>{new Date(pers.created_at).toLocaleDateString('es-ES')}</td>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              );
+            })}
+          </tbody>
+        </table>
+        
+        {/* Estadísticas */}
+        <div className="stats-footer">
+          <small>
+            Total: {personal.length} | 
+            Con foto: {personal.filter(p => p.foto_perfil).length} | 
+            Sin foto: {personal.filter(p => !p.foto_perfil).length}
+          </small>
         </div>
-      )}
-    </div>
-  );
+      </div>
+    )}
+  </div>
+);
 
   return (
     <div className="superadmin-dashboard">
@@ -393,14 +487,6 @@ const SuperAdminDashboard = ({ admin }) => {
             </span>
             <span>{admin?.username || 'Admin'} • Super Admin</span>
           </div>
-        </div>
-        <div className="header-right">
-          <button className="btn btn-accent" onClick={fetchData} disabled={loading}>
-            {loading ? '🔄 Cargando...' : '🔄 Actualizar'}
-          </button>
-          <button className="btn btn-primary" onClick={() => navigate('/')}>
-            Inicio
-          </button>
         </div>
       </div>
 
@@ -436,6 +522,12 @@ const SuperAdminDashboard = ({ admin }) => {
         >
           👤 Personal
         </button>
+        <button 
+          className={`tab-btn ${activeTab === 'comunicados' ? 'active' : ''}`}
+          onClick={() => setActiveTab('comunicados')}
+        >
+          📢 Comunicados
+        </button>
       </div>
 
       {/* Contenido principal según pestaña activa */}
@@ -445,6 +537,12 @@ const SuperAdminDashboard = ({ admin }) => {
         {activeTab === 'direcciones' && renderDirecciones()}
         {activeTab === 'directivos' && renderDirectivos()}
         {activeTab === 'personal' && renderPersonal()}
+        {activeTab === 'comunicados' && (
+          <PanelComunicadosAdmin 
+            admin={admin}
+            onClose={() => setActiveTab('dashboard')}
+          />
+        )}
       </div>
 
       {/* Modales de formularios (solo se muestran cuando están activos) */}

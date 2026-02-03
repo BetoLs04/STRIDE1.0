@@ -11,6 +11,8 @@ const DirectivoDashboard = ({ user }) => {
   const [actividades, setActividades] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [actividadSeleccionada, setActividadSeleccionada] = useState(null);
+  const [modalAbierto, setModalAbierto] = useState(false);
 
   // Estado para controlar expansión de años y períodos
   const [expansiones, setExpansiones] = useState({
@@ -18,22 +20,20 @@ const DirectivoDashboard = ({ user }) => {
     periodos: {} // Ej: { '2024-enero-abril': true, '2024-mayo-agosto': false }
   });
 
-  // Configuración del carrusel
+  // Configuración del carrusel SIN DOTS
   const carouselSettings = {
-    dots: true,
+    dots: false,
     infinite: true,
     speed: 500,
     slidesToShow: 1,
     slidesToScroll: 1,
     adaptiveHeight: true,
     arrows: true,
-    autoplay: true,
-    autoplaySpeed: 3000,
+    autoplay: false,
     pauseOnHover: true
   };
 
   useEffect(() => {
-    // Verificación más robusta
     if (!user) {
       navigate('/login');
       return;
@@ -50,16 +50,12 @@ const DirectivoDashboard = ({ user }) => {
 
   const fetchActividades = async () => {
     try {
-      // Verificar que user tiene direccion_id
       if (!user.direccion_id) {
         toast.error('No tienes una dirección asignada');
         return;
       }
       
-      console.log('🔄 Cargando actividades para dirección:', user.direccion_id);
       const response = await axios.get(`http://localhost:5000/api/university/actividades/direccion/${user.direccion_id}`);
-      
-      console.log('📊 Actividades recibidas:', response.data.data?.length || 0);
       setActividades(response.data.data || []);
     } catch (error) {
       console.error('Error fetching actividades:', error);
@@ -70,15 +66,47 @@ const DirectivoDashboard = ({ user }) => {
     }
   };
 
+  // Función para abrir modal de actividad
+  const abrirModalActividad = (actividad) => {
+    setActividadSeleccionada(actividad);
+    setModalAbierto(true);
+    // Bloquear scroll del body
+    document.body.style.overflow = 'hidden';
+  };
+
+  // Función para cerrar modal
+  const cerrarModal = () => {
+    setModalAbierto(false);
+    setActividadSeleccionada(null);
+    // Restaurar scroll del body
+    document.body.style.overflow = 'auto';
+  };
+
+  // Cerrar modal con ESC
+  useEffect(() => {
+    const handleEscKey = (event) => {
+      if (event.key === 'Escape' && modalAbierto) {
+        cerrarModal();
+      }
+    };
+
+    if (modalAbierto) {
+      document.addEventListener('keydown', handleEscKey);
+    }
+
+    return () => {
+      document.removeEventListener('keydown', handleEscKey);
+    };
+  }, [modalAbierto]);
+
   // ========== FUNCIONES PARA AGRUPAR POR AÑO Y PERÍODO ==========
   
-  // Función para obtener año y período
   const obtenerAnioYPeriodo = (fecha) => {
     if (!fecha) return { anio: 'Sin año', periodo: 'sin-fecha', anioNum: 0 };
     
     const fechaActividad = new Date(fecha);
     const anio = fechaActividad.getFullYear();
-    const mes = fechaActividad.getMonth() + 1; // 1-12
+    const mes = fechaActividad.getMonth() + 1;
     
     let periodo;
     if (mes >= 1 && mes <= 4) periodo = 'enero-abril';
@@ -94,7 +122,6 @@ const DirectivoDashboard = ({ user }) => {
     };
   };
 
-  // Agrupar actividades por AÑO primero, luego por PERÍODO
   const agruparPorAnioYPeriodo = (actividadesLista) => {
     const agrupacion = {};
     
@@ -139,19 +166,15 @@ const DirectivoDashboard = ({ user }) => {
         };
       }
       
-      // Agregar a actividades totales del año
       agrupacion[anio].actividades.push(actividad);
       
-      // Agregar al período correspondiente
       if (agrupacion[anio].periodos[periodo]) {
         agrupacion[anio].periodos[periodo].actividades.push(actividad);
       }
     });
     
-    // Ordenar años de más reciente a más antiguo
     const añosOrdenados = Object.values(agrupacion).sort((a, b) => b.anioNum - a.anioNum);
     
-    // Ordenar actividades dentro de cada período por fecha (más reciente primero)
     añosOrdenados.forEach(año => {
       Object.values(año.periodos).forEach(periodo => {
         periodo.actividades.sort((a, b) => new Date(b.fecha_inicio) - new Date(a.fecha_inicio));
@@ -162,7 +185,6 @@ const DirectivoDashboard = ({ user }) => {
     return añosOrdenados;
   };
 
-  // Función para obtener el período actual (año y período)
   const obtenerPeriodoActual = () => {
     const hoy = new Date();
     const anioActual = hoy.getFullYear();
@@ -177,7 +199,6 @@ const DirectivoDashboard = ({ user }) => {
     return { anio: anioActual.toString(), periodo: periodoActual };
   };
 
-  // Funciones para controlar expansión
   const toggleAnioExpandido = (anio) => {
     setExpansiones(prev => ({
       ...prev,
@@ -199,25 +220,6 @@ const DirectivoDashboard = ({ user }) => {
     }));
   };
 
-  const expandirTodos = () => {
-    const nuevasExpansiones = { años: {}, periodos: {} };
-    
-    agrupacionPorAnio.forEach(añoData => {
-      nuevasExpansiones.años[añoData.anio] = true;
-      Object.keys(añoData.periodos).forEach(periodoKey => {
-        const key = `${añoData.anio}-${periodoKey}`;
-        nuevasExpansiones.periodos[key] = true;
-      });
-    });
-    
-    setExpansiones(nuevasExpansiones);
-  };
-
-  const colapsarTodos = () => {
-    setExpansiones({ años: {}, periodos: {} });
-  };
-
-  // Función segura para obtener inicial
   const getInitial = () => {
     if (!user || !user.nombre) return '?';
     return user.nombre.charAt(0).toUpperCase();
@@ -261,14 +263,39 @@ const DirectivoDashboard = ({ user }) => {
     return `Finalizó hace ${Math.abs(diffDays)} días`;
   };
 
-  // Función para verificar si una imagen existe
-  const checkImageExists = (url) => {
-    return new Promise((resolve) => {
-      const img = new Image();
-      img.onload = () => resolve(true);
-      img.onerror = () => resolve(false);
-      img.src = url;
-    });
+  // Componente simplificado para la tarjeta de actividad (solo título)
+  const TarjetaActividadMinimalista = ({ actividad }) => {
+    return (
+      <div className="actividad-minimalista-card">
+        <div className="actividad-minimalista-content">
+          <div className="actividad-minimalista-info">
+            <h3>{actividad.titulo}</h3>
+            <div className="actividad-minimalista-metadata">
+              <span className="actividad-minimalista-creador">
+                👤 {actividad.creado_por_nombre || 'Sistema'}
+              </span>
+              <span className="actividad-minimalista-fecha">
+                📅 {new Date(actividad.fecha_inicio).toLocaleDateString('es-ES', { 
+                  day: '2-digit', 
+                  month: 'short', 
+                  year: 'numeric' 
+                })}
+              </span>
+              {getEstadoBadge(actividad.estado)}
+            </div>
+          </div>
+          
+          <div className="actividad-minimalista-actions">
+            <button 
+              className="btn btn-primary btn-small"
+              onClick={() => abrirModalActividad(actividad)}
+            >
+              👁️ Ver detalles
+            </button>
+          </div>
+        </div>
+      </div>
+    );
   };
 
   // Si no hay user, mostrar loading
@@ -287,66 +314,101 @@ const DirectivoDashboard = ({ user }) => {
 
   return (
     <div className="dashboard-container">
+      {/* Cabecera con Panel de Directivo a la izquierda y usuario a la derecha */}
       <div className="dashboard-header">
         <div className="header-left">
           <h1>Panel de Directivo</h1>
-          <div className="user-info">
+        </div>
+        
+        <div className="header-right">
+          <div className="user-info-large">
+            <div className="user-details">
+              <h3>{user.nombre || 'Usuario no identificado'}</h3>
+              <p>
+                <span className="user-cargo">{user.cargo || 'Sin cargo'}</span>
+                <span className="user-separator"> • </span>
+                <span className="user-direccion">{user.direccion_nombre || 'Sin dirección asignada'}</span>
+              </p>
+            </div>
             <div className="user-avatar-large">
               {getInitial()}
             </div>
-            <div className="user-details">
-              <h3>{user.nombre || 'Usuario no identificado'}</h3>
-              <p>{user.cargo || 'Sin cargo'} • {user.direccion_nombre || 'Sin dirección asignada'}</p>
-            </div>
           </div>
-        </div>
-        <div className="header-right">
-          <button className="btn btn-secondary" onClick={() => navigate('/welcome')}>
-            Ver STRIDE
-          </button>
-          <button className="btn btn-primary" onClick={() => navigate('/')}>
-            Inicio
-          </button>
-          <button 
-            className="btn btn-accent" 
-            onClick={() => window.open('http://localhost:5000/check-uploads', '_blank')}
-            title="Verificar archivos subidos"
-          >
-            📁 Ver Uploads
-          </button>
         </div>
       </div>
 
       <div className="dashboard-content">
-        <div className="section-header">
-          <h2>📋 Actividades de mi Dirección</h2>
-          <p>Actividades creadas por el personal de {user.direccion_nombre || 'tu dirección'}</p>
-          <div className="stats-summary">
-            <span className="stat-summary-item">
-              <strong>Total:</strong> {actividades.length} actividades
-            </span>
-            <span className="stat-summary-item">
-              <strong>En progreso:</strong> {actividades.filter(a => a.estado === 'en_progreso').length}
-            </span>
-            <span className="stat-summary-item">
-              <strong>Completadas:</strong> {actividades.filter(a => a.estado === 'completada').length}
-            </span>
+        {/* Banner mejorado */}
+        <div className="dashboard-header-banner">
+          <div className="banner-left">
+            <h2 className="banner-title">📋 Actividades de mi Dirección</h2>
+            <p className="banner-subtitle">
+              Actividades creadas por el personal de {user.direccion_nombre || 'tu dirección'}
+            </p>
           </div>
           
-          {/* Indicador del año y período actual */}
-          <div className="periodo-actual-indicator">
-            <div className="periodo-actual-indicator-icon">
-              {periodoActual.periodo === 'enero-abril' ? '❄️' : 
-               periodoActual.periodo === 'mayo-agosto' ? '🌸' : '🍂'}
-            </div>
-            <div className="periodo-actual-indicator-text">
-              <h4>📅 PERÍODO ACTUAL</h4>
-              <p>Año {periodoActual.anio} • {periodoActual.periodo === 'enero-abril' ? 'Enero - Abril' : 
-                 periodoActual.periodo === 'mayo-agosto' ? 'Mayo - Agosto' : 'Septiembre - Diciembre'}</p>
+          <div className="banner-right">
+            <div className="periodo-actual-banner">
+              <span className="periodo-emoji-banner">
+                {periodoActual.periodo === 'enero-abril' ? '❄️' : 
+                 periodoActual.periodo === 'mayo-agosto' ? '🌸' : '🍂'}
+              </span>
+              <div className="periodo-text-banner">
+                <h4>📅 PERÍODO ACTUAL</h4>
+                <p>
+                  Año {periodoActual.anio} • 
+                  {periodoActual.periodo === 'enero-abril' ? ' Enero - Abril' : 
+                   periodoActual.periodo === 'mayo-agosto' ? ' Mayo - Agosto' : ' Septiembre - Diciembre'}
+                </p>
+              </div>
             </div>
           </div>
         </div>
-
+        
+        <div className="dashboard-stats">
+          <div className="stat-card" onClick={() => {
+            const pendientes = actividades.filter(a => a.estado === 'pendiente').length;
+            toast.info(`${pendientes} actividades pendientes`);
+          }}>
+            <span className="stat-number">{actividades.length}</span>
+            <span className="stat-label">Total Actividades</span>
+            <div className="stat-icon">📋</div>
+          </div>
+          
+          <div className="stat-card" onClick={() => {
+            const pendientes = actividades.filter(a => a.estado === 'pendiente').length;
+            toast.info(`${pendientes} actividades pendientes`);
+          }}>
+            <span className="stat-number">
+              {actividades.filter(a => a.estado === 'pendiente').length}
+            </span>
+            <span className="stat-label">Pendientes</span>
+            <div className="stat-icon">⏳</div>
+          </div>
+          
+          <div className="stat-card" onClick={() => {
+            const enProgreso = actividades.filter(a => a.estado === 'en_progreso').length;
+            toast.info(`${enProgreso} actividades en progreso`);
+          }}>
+            <span className="stat-number">
+              {actividades.filter(a => a.estado === 'en_progreso').length}
+            </span>
+            <span className="stat-label">En Progreso</span>
+            <div className="stat-icon">🚀</div>
+          </div>
+          
+          <div className="stat-card" onClick={() => {
+            const completadas = actividades.filter(a => a.estado === 'completada').length;
+            toast.info(`${completadas} actividades completadas`);
+          }}>
+            <span className="stat-number">
+              {actividades.filter(a => a.estado === 'completada').length}
+            </span>
+            <span className="stat-label">Completadas</span>
+            <div className="stat-icon">✅</div>
+          </div>
+        </div>
+        
         {error ? (
           <div className="error-message-box">
             <p>{error}</p>
@@ -370,17 +432,8 @@ const DirectivoDashboard = ({ user }) => {
           </div>
         ) : (
           <div className="periodos-container">
-            {/* Controles para expandir/colapsar todos */}
             <div className="periodos-controls">
               <h3>📅 Actividades por Año y Período</h3>
-              <div className="periodos-buttons">
-                <button className="btn btn-small" onClick={expandirTodos}>
-                  ▶️ Expandir Todos
-                </button>
-                <button className="btn btn-small" onClick={colapsarTodos}>
-                  ◀️ Colapsar Todos
-                </button>
-              </div>
             </div>
 
             {/* Mostrar años con actividades */}
@@ -448,120 +501,12 @@ const DirectivoDashboard = ({ user }) => {
                             
                             {expansiones.periodos[`${añoData.anio}-${periodoKey}`] && (
                               <div className="periodo-acordeon-content">
-                                <div className="actividades-grid">
+                                <div className="actividades-lista-minimalista">
                                   {periodoData.actividades.map(actividad => (
-                                    <div key={actividad.id} className="actividad-card">
-                                      <div className="actividad-header">
-                                        <div className="actividad-title-section">
-                                          <h3>{actividad.titulo}</h3>
-                                          <span className="creador-info">
-                                            👤 {actividad.creado_por_nombre || 'Sistema'}
-                                            {actividad.creado_por_tipo === 'personal' && ' (Personal)'}
-                                            {actividad.creado_por_tipo === 'directivo' && ' (Directivo)'}
-                                          </span>
-                                        </div>
-                                        <div className="actividad-actions">
-                                          {getEstadoBadge(actividad.estado)}
-                                        </div>
-                                      </div>
-                                      
-                                      <div className="actividad-body">
-                                        <p className="actividad-descripcion">{actividad.descripcion || 'Sin descripción'}</p>
-                                        
-                                        {/* Carrusel de imágenes */}
-                                        {actividad.imagenes && actividad.imagenes.length > 0 && (
-                                          <div className="actividad-imagenes-carousel">
-                                            <div className="carousel-header">
-                                              <span className="carousel-title">
-                                                🖼️ Galería de evidencias ({actividad.imagenes.length})
-                                              </span>
-                                            </div>
-                                            <Slider {...carouselSettings} className="imagenes-carousel">
-                                              {actividad.imagenes.map((img, index) => (
-                                                <div key={index} className="carousel-slide">
-                                                  <div className="slide-content">
-                                                    <img 
-                                                      src={img.url} 
-                                                      alt={`Evidencia ${index + 1} - ${actividad.titulo}`}
-                                                      className="carousel-image"
-                                                      onError={(e) => {
-                                                        console.error(`❌ Error cargando imagen: ${img.url}`);
-                                                        e.target.src = '/placeholder.jpg';
-                                                        e.target.alt = 'Imagen no disponible';
-                                                      }}
-                                                    />
-                                                    <div className="image-caption">
-                                                      <span>Evidencia {index + 1} de {actividad.imagenes.length}</span>
-                                                      <small>{img.nombre_archivo || 'Sin nombre'}</small>
-                                                    </div>
-                                                  </div>
-                                                </div>
-                                              ))}
-                                            </Slider>
-                                            <div className="carousel-info">
-                                              <small>
-                                                {actividad.imagenes.length} imagen(es) subida(s) por el personal como evidencia de la actividad.
-                                              </small>
-                                            </div>
-                                          </div>
-                                        )}
-                                        
-                                        <div className="actividad-meta">
-                                          <div className="meta-row">
-                                            <div className="meta-item">
-                                              <span className="meta-label">📅 Fecha de inicio:</span>
-                                              <span className="meta-value highlight">{formatDate(actividad.fecha_inicio)}</span>
-                                            </div>
-                                            
-                                            <div className="meta-item">
-                                              <span className="meta-label">📅 Fecha de fin:</span>
-                                              <span className="meta-value">{formatDate(actividad.fecha_fin)}</span>
-                                              {actividad.fecha_fin && (
-                                                <span className={`dias-restantes ${new Date(actividad.fecha_fin) < new Date() ? 'finalizado' : 'activo'}`}>
-                                                  {getDiasRestantes(actividad.fecha_fin)}
-                                                </span>
-                                              )}
-                                            </div>
-                                          </div>
-                                          
-                                          <div className="meta-row">
-                                            <div className="meta-item">
-                                              <span className="meta-label">📅 Creada el:</span>
-                                              <span className="meta-value">{formatDate(actividad.fecha_creacion)}</span>
-                                            </div>
-                                            
-                                            <div className="meta-item">
-                                              <span className="meta-label">👥 Creador:</span>
-                                              <span className="meta-value creador-tag">
-                                                {actividad.creado_por_tipo === 'personal' ? '👤 Personal' : '👔 Directivo'}
-                                              </span>
-                                            </div>
-                                          </div>
-                                        </div>
-                                      </div>
-                                      
-                                      <div className="actividad-footer">
-                                        <div className="footer-left">
-                                          <span className="direccion-tag">
-                                            🏛️ {actividad.direccion_nombre || 'Sin dirección'}
-                                          </span>
-                                          <span className="tipo-actividad-tag">
-                                            {actividad.creado_por_tipo === 'personal' ? '📝 Actividad de Personal' : '👔 Actividad Directiva'}
-                                          </span>
-                                        </div>
-                                        
-                                        <div className="footer-right">
-                                          <button 
-                                            className="btn btn-small btn-outline"
-                                            onClick={() => {
-                                              toast.info('Funcionalidad de comentarios próximamente');
-                                            }}
-                                          >
-                                            💬 Comentar
-                                          </button>
-                                        </div>
-                                      </div>
-                                    </div>
+                                    <TarjetaActividadMinimalista 
+                                      key={actividad.id} 
+                                      actividad={actividad} 
+                                    />
                                   ))}
                                 </div>
                               </div>
@@ -574,148 +519,218 @@ const DirectivoDashboard = ({ user }) => {
               ))}
           </div>
         )}
-
-        {/* Resumen por años */}
+        
+        {/* Resumen por creador mejorado */}
         {actividades.length > 0 && (
-          <div className="años-resumen">
-            <h3>📊 Resumen por Años</h3>
-            <div className="años-resumen-grid">
-              {agrupacionPorAnio
-                .filter(añoData => añoData.actividades.length > 0)
-                .map(añoData => (
-                  <div 
-                    key={añoData.anio} 
-                    className={`año-resumen-card ${añoData.anio === periodoActual.anio ? 'año-actual' : ''}`}
-                    onClick={() => {
-                      toggleAnioExpandido(añoData.anio);
-                    }}
-                  >
-                    <div className="año-resumen-header">
-                      <span className="año-resumen-year">{añoData.anio}</span>
-                      {añoData.anio === periodoActual.anio && (
-                        <span className="año-resumen-actual">ACTUAL</span>
-                      )}
-                    </div>
-                    
-                    <div className="año-resumen-stats">
-                      <span className="año-resumen-count">{añoData.actividades.length}</span>
-                      <span className="año-resumen-percent">
-                        {actividades.length > 0 
-                          ? `${((añoData.actividades.length / actividades.length) * 100).toFixed(1)}%`
-                          : '0%'}
-                      </span>
-                    </div>
-                    
-                    <div className="año-resumen-periodos">
-                      {Object.entries(añoData.periodos)
-                        .filter(([_, periodoData]) => periodoData.actividades.length > 0)
-                        .sort(([keyA, a], [keyB, b]) => a.orden - b.orden)
-                        .map(([periodoKey, periodoData]) => (
-                          <div 
-                            key={periodoKey} 
-                            className={`año-resumen-periodo ${añoData.anio === periodoActual.anio && periodoKey === periodoActual.periodo ? 'año-resumen-periodo-actual' : ''}`}
-                          >
-                            <span className="periodo-resumen-label">
-                              <span>{periodoData.emoji}</span>
-                              <span>{periodoData.label}</span>
-                            </span>
-                            <span className="periodo-resumen-count">{periodoData.actividades.length}</span>
-                          </div>
-                        ))}
-                    </div>
-                  </div>
-                ))}
+          <div className="resumen-creadores-mejorado">
+            <div className="resumen-header">
+              <h3>📊 Resumen por Creador</h3>
+              <p>Estadísticas de actividades por cada miembro del equipo</p>
             </div>
-          </div>
-        )}
-
-        <div className="dashboard-stats">
-          <div className="stat-card" onClick={() => {
-            const pendientes = actividades.filter(a => a.estado === 'pendiente').length;
-            toast.info(`${pendientes} actividades pendientes`);
-          }}>
-            <span className="stat-number">{actividades.length}</span>
-            <span className="stat-label">Total Actividades</span>
-            <div className="stat-icon">📋</div>
-          </div>
-          
-          <div className="stat-card" onClick={() => {
-            const pendientes = actividades.filter(a => a.estado === 'pendiente').length;
-            toast.info(`${pendientes} actividades pendientes`);
-          }}>
-            <span className="stat-number">
-              {actividades.filter(a => a.estado === 'pendiente').length}
-            </span>
-            <span className="stat-label">Pendientes</span>
-            <div className="stat-icon">⏳</div>
-          </div>
-          
-          <div className="stat-card" onClick={() => {
-            const enProgreso = actividades.filter(a => a.estado === 'en_progreso').length;
-            toast.info(`${enProgreso} actividades en progreso`);
-          }}>
-            <span className="stat-number">
-              {actividades.filter(a => a.estado === 'en_progreso').length}
-            </span>
-            <span className="stat-label">En Progreso</span>
-            <div className="stat-icon">🚀</div>
-          </div>
-          
-          <div className="stat-card" onClick={() => {
-            const completadas = actividades.filter(a => a.estado === 'completada').length;
-            toast.info(`${completadas} actividades completadas`);
-          }}>
-            <span className="stat-number">
-              {actividades.filter(a => a.estado === 'completada').length}
-            </span>
-            <span className="stat-label">Completadas</span>
-            <div className="stat-icon">✅</div>
-          </div>
-        </div>
-
-        {/* Resumen por creador */}
-        {actividades.length > 0 && (
-          <div className="resumen-creadores">
-            <h3>📊 Resumen por Creador</h3>
-            <div className="creadores-grid">
-              {Array.from(new Set(actividades.map(a => a.creado_por_nombre))).map(creador => {
-                if (!creador || creador === 'Sistema') return null;
-                
-                const actividadesCreador = actividades.filter(a => a.creado_por_nombre === creador);
-                const tipo = actividadesCreador[0]?.creado_por_tipo;
-                
-                return (
-                  <div key={creador} className="creador-card">
-                    <div className="creador-header">
-                      <div className="creador-avatar">
-                        {creador.charAt(0).toUpperCase()}
+            
+            <div className="creadores-resumen-grid">
+              {Array.from(new Set(actividades.map(a => a.creado_por_nombre)))
+                .filter(creador => creador && creador !== 'Sistema')
+                .map(creador => {
+                  const actividadesCreador = actividades.filter(a => a.creado_por_nombre === creador);
+                  const tipo = actividadesCreador[0]?.creado_por_tipo;
+                  const completadas = actividadesCreador.filter(a => a.estado === 'completada').length;
+                  const enProgreso = actividadesCreador.filter(a => a.estado === 'en_progreso').length;
+                  const pendientes = actividadesCreador.filter(a => a.estado === 'pendiente').length;
+                  const porcentajeCompletadas = actividadesCreador.length > 0 ? 
+                    Math.round((completadas / actividadesCreador.length) * 100) : 0;
+                  
+                  return (
+                    <div key={creador} className="creador-resumen-card">
+                      <div className="creador-resumen-header">
+                        <div className="creador-avatar-grande">
+                          {creador.charAt(0).toUpperCase()}
+                          {tipo === 'personal' ? '' : '👔'}
+                        </div>
+                        <div className="creador-info-detallada">
+                          <h4>{creador}</h4>
+                          <span className="creador-role-detallado">
+                            {tipo === 'personal' ? 'Personal Administrativo' : 'Directivo'}
+                          </span>
+                          <span className="creador-actividades-count">
+                            {actividadesCreador.length} actividad(es)
+                          </span>
+                        </div>
                       </div>
-                      <div className="creador-info">
-                        <h4>{creador}</h4>
-                        <span className="creador-role">
-                          {tipo === 'personal' ? '👤 Personal' : '👔 Directivo'}
+                      
+                      <div className="creador-estadisticas">
+                        <div className="estadistica-item">
+                          <div className="estadistica-circulo" style={{ 
+                            '--porcentaje': porcentajeCompletadas,
+                            '--color': porcentajeCompletadas >= 70 ? '#28a745' : 
+                                      porcentajeCompletadas >= 40 ? '#ffc107' : '#dc3545'
+                          }}>
+                            <span className="estadistica-porcentaje">{porcentajeCompletadas}%</span>
+                          </div>
+                          <span className="estadistica-label">Efectividad</span>
+                        </div>
+                        
+                        <div className="estadisticas-detalles">
+                          <div className="detalle-estado completada">
+                            <span className="detalle-icon">✅</span>
+                            <span className="detalle-count">{completadas}</span>
+                            <span className="detalle-label">Completadas</span>
+                          </div>
+                          <div className="detalle-estado en-progreso">
+                            <span className="detalle-icon">🚀</span>
+                            <span className="detalle-count">{enProgreso}</span>
+                            <span className="detalle-label">En Progreso</span>
+                          </div>
+                          <div className="detalle-estado pendiente">
+                            <span className="detalle-icon">⏳</span>
+                            <span className="detalle-count">{pendientes}</span>
+                            <span className="detalle-label">Pendientes</span>
+                          </div>
+                        </div>
+                      </div>
+                      
+                      <div className="creador-ultima-actividad">
+                        <span className="ultima-label">Última actividad:</span>
+                        <span className="ultima-fecha">
+                          {actividadesCreador.length > 0 ? 
+                            new Date(actividadesCreador[0].fecha_creacion).toLocaleDateString('es-ES', { 
+                              day: '2-digit', 
+                              month: 'short', 
+                              year: 'numeric' 
+                            }) : 
+                            'Sin actividades'}
                         </span>
                       </div>
                     </div>
-                    <div className="creador-stats">
-                      <div className="creador-stat">
-                        <span className="stat-number">{actividadesCreador.length}</span>
-                        <span className="stat-label">Actividades</span>
-                      </div>
-                      <div className="creador-stat">
-                        <span className="stat-number">
-                          {actividadesCreador.filter(a => a.estado === 'completada').length}
-                        </span>
-                        <span className="stat-label">Completadas</span>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
+                  );
+                })}
             </div>
           </div>
         )}
       </div>
+
+      {/* Modal de Actividad */}
+      {modalAbierto && actividadSeleccionada && (
+        <div className="actividad-modal-overlay" onClick={cerrarModal}>
+          <div className="actividad-modal-container" onClick={(e) => e.stopPropagation()}>
+            <button className="modal-close-btn" onClick={cerrarModal}>
+              ✕
+            </button>
+            
+            <div className="modal-header">
+              <h2>{actividadSeleccionada.titulo}</h2>
+              <div className="modal-header-badges">
+                {getEstadoBadge(actividadSeleccionada.estado)}
+                <span className={`tipo-badge-modal ${actividadSeleccionada.creado_por_tipo}`}>
+                  {actividadSeleccionada.creado_por_tipo === 'personal' ? '📝 Personal' : '👔 Directivo'}
+                </span>
+              </div>
+            </div>
+            
+            <div className="modal-body">
+              <div className="modal-creador-info">
+                <span className="creador-label">👤 Creador:</span>
+                <span className="creador-valor">
+                  {actividadSeleccionada.creado_por_nombre || 'Sistema'}
+                </span>
+                <span className="creador-separator">•</span>
+                <span className="creador-direccion">
+                  🏛️ {actividadSeleccionada.direccion_nombre || 'Sin dirección'}
+                </span>
+              </div>
+              
+              <div className="modal-descripcion">
+                <h4>📄 Descripción:</h4>
+                <p>{actividadSeleccionada.descripcion || 'Sin descripción'}</p>
+              </div>
+              
+              {/* Carrusel de imágenes en modal */}
+              {actividadSeleccionada.imagenes && actividadSeleccionada.imagenes.length > 0 && (
+                <div className="modal-imagenes">
+                  <h4>🖼️ Galería de Evidencias ({actividadSeleccionada.imagenes.length})</h4>
+                  <Slider {...carouselSettings} className="modal-carousel">
+                    {actividadSeleccionada.imagenes.map((img, index) => (
+                      <div key={index} className="modal-slide">
+                        <div className="modal-slide-content">
+                          <img 
+                            src={img.url} 
+                            alt={`Evidencia ${index + 1} - ${actividadSeleccionada.titulo}`}
+                            className="modal-image"
+                            onError={(e) => {
+                              e.target.src = '/placeholder.jpg';
+                              e.target.alt = 'Imagen no disponible';
+                            }}
+                          />
+                          <div className="modal-image-info">
+                            <span>Evidencia {index + 1} de {actividadSeleccionada.imagenes.length}</span>
+                            <small>{img.nombre_archivo || 'Sin nombre'}</small>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </Slider>
+                </div>
+              )}
+              
+              <div className="modal-fechas">
+                <h4>📅 Información de Fechas</h4>
+                <div className="modal-fechas-grid">
+                  <div className="modal-fecha-item">
+                    <div className="modal-fecha-header">
+                      <span className="modal-fecha-icon">📅</span>
+                      <span className="modal-fecha-label">Fecha de creación:</span>
+                    </div>
+                    <div className="modal-fecha-valor">
+                      {formatDate(actividadSeleccionada.fecha_creacion)}
+                    </div>
+                  </div>
+                  
+                  <div className="modal-fecha-item">
+                    <div className="modal-fecha-header">
+                      <span className="modal-fecha-icon">🚀</span>
+                      <span className="modal-fecha-label">Fecha de inicio:</span>
+                    </div>
+                    <div className="modal-fecha-valor">
+                      {formatDate(actividadSeleccionada.fecha_inicio)}
+                    </div>
+                  </div>
+                  
+                  <div className="modal-fecha-item">
+                    <div className="modal-fecha-header">
+                      <span className="modal-fecha-icon">🏁</span>
+                      <span className="modal-fecha-label">Fecha de fin:</span>
+                    </div>
+                    <div className="modal-fecha-valor">
+                      {formatDate(actividadSeleccionada.fecha_fin)}
+                      {actividadSeleccionada.fecha_fin && (
+                        <span className="modal-dias-restantes">
+                          <span className={`dias-restantes ${new Date(actividadSeleccionada.fecha_fin) < new Date() ? 'finalizado' : 'activo'}`}>
+                            {getDiasRestantes(actividadSeleccionada.fecha_fin)}
+                          </span>
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            
+            <div className="modal-footer">
+              <button className="btn btn-secondary" onClick={cerrarModal}>
+                Cerrar
+              </button>
+              <button 
+                className="btn btn-primary"
+                onClick={() => {
+                  toast.info('Funcionalidad de comentarios próximamente');
+                }}
+              >
+                💬 Agregar Comentario
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

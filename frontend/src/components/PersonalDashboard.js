@@ -17,6 +17,7 @@ const PersonalDashboard = ({ user }) => {
   const [formData, setFormData] = useState({
     titulo: '',
     descripcion: '',
+    tipo_actividad: '', // NUEVO: campo de texto libre
     fecha_inicio: '',
     fecha_fin: '',
     imagenes: []
@@ -223,6 +224,36 @@ const PersonalDashboard = ({ user }) => {
     setExpansiones({ años: {}, periodos: {} });
   };
 
+  // ========== FUNCIONES PARA FECHAS ==========
+
+  // Obtener fecha mínima (2 semanas antes de hoy)
+  const getMinDate = () => {
+    const hoy = new Date();
+    const dosSemanasAtras = new Date(hoy);
+    dosSemanasAtras.setDate(hoy.getDate() - 14); // 2 semanas = 14 días
+    
+    return dosSemanasAtras.toISOString().split('T')[0];
+  };
+
+  // Obtener fecha máxima (1 año desde hoy)
+  const getMaxDate = () => {
+    const hoy = new Date();
+    const unAnoAdelante = new Date(hoy);
+    unAnoAdelante.setFullYear(hoy.getFullYear() + 1);
+    
+    return unAnoAdelante.toISOString().split('T')[0];
+  };
+
+  // Validación para asegurar que fecha_inicio no sea muy antigua
+  const isFechaInicioValida = (fecha) => {
+    const fechaSeleccionada = new Date(fecha);
+    const hoy = new Date();
+    const dosSemanasAtras = new Date(hoy);
+    dosSemanasAtras.setDate(hoy.getDate() - 14);
+    
+    return fechaSeleccionada >= dosSemanasAtras;
+  };
+
   const getInitial = () => {
     if (!user || !user.nombre) return '?';
     return user.nombre.charAt(0).toUpperCase();
@@ -307,13 +338,32 @@ const PersonalDashboard = ({ user }) => {
   const handleSubmitActividad = async (e) => {
     e.preventDefault();
     
+    // Validaciones
     if (!formData.titulo.trim()) {
       toast.error('El título es requerido');
       return;
     }
     
+    // NUEVA VALIDACIÓN: tipo_actividad es requerido
+    if (!formData.tipo_actividad.trim()) {
+      toast.error('El tipo de actividad es requerido');
+      return;
+    }
+    
+    // Validar longitud del tipo_actividad
+    if (formData.tipo_actividad.length > 100) {
+      toast.error('El tipo de actividad no puede exceder los 100 caracteres');
+      return;
+    }
+    
     if (!formData.fecha_inicio) {
       toast.error('La fecha de inicio es requerida');
+      return;
+    }
+    
+    // Validar que fecha_inicio esté en el rango permitido
+    if (!isFechaInicioValida(formData.fecha_inicio)) {
+      toast.error('La fecha de inicio debe ser de los últimos 14 días');
       return;
     }
     
@@ -335,6 +385,7 @@ const PersonalDashboard = ({ user }) => {
       
       formDataToSend.append('titulo', formData.titulo);
       formDataToSend.append('descripcion', formData.descripcion);
+      formDataToSend.append('tipo_actividad', formData.tipo_actividad); // NUEVO: agregar tipo_actividad
       formDataToSend.append('fecha_inicio', formData.fecha_inicio);
       formDataToSend.append('fecha_fin', formData.fecha_fin || '');
       formDataToSend.append('direccion_id', user.direccion_id);
@@ -346,6 +397,7 @@ const PersonalDashboard = ({ user }) => {
       });
       
       console.log('Enviando actividad con', formData.imagenes.length, 'imágenes');
+      console.log('Tipo de actividad:', formData.tipo_actividad);
       
       const response = await axios.post('http://localhost:5000/api/university/actividades', formDataToSend, {
         headers: {
@@ -355,9 +407,11 @@ const PersonalDashboard = ({ user }) => {
       
       toast.success('Actividad creada exitosamente con ' + formData.imagenes.length + ' imagen(es)!');
       
+      // Limpiar formulario
       setFormData({ 
         titulo: '', 
         descripcion: '', 
+        tipo_actividad: '', // Limpiar este campo también
         fecha_inicio: '',
         fecha_fin: '',
         imagenes: [] 
@@ -496,9 +550,6 @@ const PersonalDashboard = ({ user }) => {
         <div className="header-right">
           <button className="btn btn-primary" onClick={() => setShowFormActividad(true)}>
             + Nueva Actividad
-          </button>
-          <button className="btn btn-secondary" onClick={() => navigate('/welcome')}>
-            Ver STRIDE
           </button>
         </div>
       </div>
@@ -658,6 +709,47 @@ const PersonalDashboard = ({ user }) => {
                                       <div className="actividad-body">
                                         <p className="actividad-descripcion">{actividad.descripcion || 'Sin descripción'}</p>
                                         
+                                        {/* NUEVO: Mostrar tipo de actividad */}
+                                        <div className="actividad-meta">
+                                          <div className="meta-row">
+                                            <div className="meta-item">
+                                              <span className="meta-label">📌 Tipo:</span>
+                                              <span className="meta-value">
+                                                {actividad.tipo_actividad || 'No especificado'}
+                                              </span>
+                                            </div>
+                                          </div>
+                                          
+                                          <div className="meta-row">
+                                            <div className="meta-item">
+                                              <span className="meta-label">📅 Inicio:</span>
+                                              <span className="meta-value">{formatDate(actividad.fecha_inicio)}</span>
+                                            </div>
+                                            
+                                            <div className="meta-item">
+                                              <span className="meta-label">📅 Fin:</span>
+                                              <span className="meta-value">{formatDate(actividad.fecha_fin)}</span>
+                                              {actividad.fecha_fin && (
+                                                <span className={`dias-restantes ${new Date(actividad.fecha_fin) < new Date() ? 'finalizado' : 'activo'}`}>
+                                                  {getDiasRestantes(actividad.fecha_fin)}
+                                                </span>
+                                              )}
+                                            </div>
+                                          </div>
+                                          
+                                          <div className="meta-row">
+                                            <div className="meta-item">
+                                              <span className="meta-label">👤 Creado por:</span>
+                                              <span className="meta-value">{actividad.creado_por_nombre || 'Sistema'}</span>
+                                            </div>
+                                            
+                                            <div className="meta-item">
+                                              <span className="meta-label">📅 Publicado el:</span>
+                                              <span className="meta-value">{formatDate(actividad.fecha_creacion)}</span>
+                                            </div>
+                                          </div>
+                                        </div>
+                                        
                                         {actividad.imagenes && actividad.imagenes.length > 0 && (
                                           <div className="actividad-imagenes-carousel">
                                             <div className="carousel-header">
@@ -692,37 +784,6 @@ const PersonalDashboard = ({ user }) => {
                                             </div>
                                           </div>
                                         )}
-                                        
-                                        <div className="actividad-meta">
-                                          <div className="meta-row">
-                                            <div className="meta-item">
-                                              <span className="meta-label">📅 Inicio:</span>
-                                              <span className="meta-value">{formatDate(actividad.fecha_inicio)}</span>
-                                            </div>
-                                            
-                                            <div className="meta-item">
-                                              <span className="meta-label">📅 Fin:</span>
-                                              <span className="meta-value">{formatDate(actividad.fecha_fin)}</span>
-                                              {actividad.fecha_fin && (
-                                                <span className={`dias-restantes ${new Date(actividad.fecha_fin) < new Date() ? 'finalizado' : 'activo'}`}>
-                                                  {getDiasRestantes(actividad.fecha_fin)}
-                                                </span>
-                                              )}
-                                            </div>
-                                          </div>
-                                          
-                                          <div className="meta-row">
-                                            <div className="meta-item">
-                                              <span className="meta-label">👤 Creado por:</span>
-                                              <span className="meta-value">{actividad.creado_por_nombre || 'Sistema'}</span>
-                                            </div>
-                                            
-                                            <div className="meta-item">
-                                              <span className="meta-label">📅 Publicado el:</span>
-                                              <span className="meta-value">{formatDate(actividad.fecha_creacion)}</span>
-                                            </div>
-                                          </div>
-                                        </div>
                                       </div>
                                       
                                       <div className="actividad-footer">
@@ -857,8 +918,28 @@ const PersonalDashboard = ({ user }) => {
                 />
               </div>
               
+              {/* NUEVO: Campo para tipo de actividad (texto libre) */}
               <div className="form-group">
-                <label>Descripción (Máximo 200 palabras)</label>
+                <label>Tipo de Actividad *</label>
+                <input
+                  type="text"
+                  name="tipo_actividad"
+                  value={formData.tipo_actividad}
+                  onChange={handleChange}
+                  placeholder="Ej: Taller, Conferencia, Reunión de trabajo, Seminario, etc."
+                  required
+                  maxLength="100"
+                />
+                <small className="form-hint">
+                  Describe qué tipo de actividad es (máximo 100 caracteres)
+                  <span className="word-counter" style={{display: 'block', marginTop: '5px'}}>
+                    {formData.tipo_actividad.length} / 100 caracteres
+                  </span>
+                </small>
+              </div>
+              
+              <div className="form-group">
+                <label>Descripción (Máximo 150 palabras)</label>
                 <textarea
                   name="descripcion"
                   value={formData.descripcion}
@@ -886,9 +967,12 @@ const PersonalDashboard = ({ user }) => {
                     value={formData.fecha_inicio}
                     onChange={handleChange}
                     required
-                    min={new Date().toISOString().split('T')[0]}
+                    min={getMinDate()}
+                    max={getMaxDate()}
                   />
-                  <small className="form-hint">Primer día del evento/actividad</small>
+                  <small className="form-hint">
+                    Puedes seleccionar desde {getMinDate()} (2 semanas atrás) hasta {getMaxDate()} (1 año adelante)
+                  </small>
                 </div>
                 
                 <div className="form-group">
@@ -898,9 +982,12 @@ const PersonalDashboard = ({ user }) => {
                     name="fecha_fin"
                     value={formData.fecha_fin}
                     onChange={handleChange}
-                    min={formData.fecha_inicio || new Date().toISOString().split('T')[0]}
+                    min={formData.fecha_inicio || getMinDate()}
+                    max={getMaxDate()}
                   />
-                  <small className="form-hint">Último día del evento/actividad</small>
+                  <small className="form-hint">
+                    Último día del evento/actividad
+                  </small>
                 </div>
               </div>
               
@@ -1005,7 +1092,11 @@ const PersonalDashboard = ({ user }) => {
                 <button 
                   type="submit" 
                   className="btn btn-primary"
-                  disabled={formData.descripcion.split(/\s+/).filter(word => word.length > 0).length > 200 || uploadingImages || !formData.fecha_inicio}
+                  disabled={formData.descripcion.split(/\s+/).filter(word => word.length > 0).length > 200 || 
+                           uploadingImages || 
+                           !formData.fecha_inicio ||
+                           !formData.tipo_actividad.trim() ||
+                           formData.tipo_actividad.length > 100}
                 >
                   {uploadingImages ? 'Subiendo...' : `Crear Actividad con ${formData.imagenes.length} imagen(es)`}
                 </button>
