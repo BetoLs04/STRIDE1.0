@@ -5,6 +5,7 @@ import { toast } from 'react-toastify';
 import Slider from 'react-slick';
 import "slick-carousel/slick/slick.css";
 import "slick-carousel/slick/slick-theme.css";
+import '../styles/PersonalDashboard.css';
 
 const PersonalDashboard = ({ user }) => {
   const navigate = useNavigate();
@@ -14,10 +15,13 @@ const PersonalDashboard = ({ user }) => {
   const [showFormActividad, setShowFormActividad] = useState(false);
   const [uploadingImages, setUploadingImages] = useState(false);
   const [isDragOver, setIsDragOver] = useState(false);
+  const [actividadSeleccionada, setActividadSeleccionada] = useState(null);
+  const [modalAbierto, setModalAbierto] = useState(false);
+  
   const [formData, setFormData] = useState({
     titulo: '',
     descripcion: '',
-    tipo_actividad: '', // NUEVO: campo de texto libre
+    tipo_actividad: '', 
     fecha_inicio: '',
     fecha_fin: '',
     imagenes: []
@@ -40,6 +44,19 @@ const PersonalDashboard = ({ user }) => {
     arrows: true,
     autoplay: true,
     autoplaySpeed: 3000,
+    pauseOnHover: true
+  };
+
+  // Configuración del carrusel SIN DOTS (para modal)
+  const carouselSettingsModal = {
+    dots: false,
+    infinite: true,
+    speed: 500,
+    slidesToShow: 1,
+    slidesToScroll: 1,
+    adaptiveHeight: true,
+    arrows: true,
+    autoplay: false,
     pauseOnHover: true
   };
 
@@ -204,24 +221,6 @@ const PersonalDashboard = ({ user }) => {
         [key]: !prev.periodos[key]
       }
     }));
-  };
-
-  const expandirTodos = () => {
-    const nuevasExpansiones = { años: {}, periodos: {} };
-    
-    agrupacionPorAnio.forEach(añoData => {
-      nuevasExpansiones.años[añoData.anio] = true;
-      Object.keys(añoData.periodos).forEach(periodoKey => {
-        const key = `${añoData.anio}-${periodoKey}`;
-        nuevasExpansiones.periodos[key] = true;
-      });
-    });
-    
-    setExpansiones(nuevasExpansiones);
-  };
-
-  const colapsarTodos = () => {
-    setExpansiones({ años: {}, periodos: {} });
   };
 
   // ========== FUNCIONES PARA FECHAS ==========
@@ -519,6 +518,87 @@ const PersonalDashboard = ({ user }) => {
     }
   };
 
+  // ========== FUNCIONES PARA MODAL ==========
+
+  // Función para abrir modal de actividad
+  const abrirModalActividad = (actividad) => {
+    setActividadSeleccionada(actividad);
+    setModalAbierto(true);
+    document.body.style.overflow = 'hidden';
+  };
+
+  // Función para cerrar modal
+  const cerrarModal = () => {
+    setModalAbierto(false);
+    setActividadSeleccionada(null);
+    document.body.style.overflow = 'auto';
+  };
+
+  // Cerrar modal con ESC
+  useEffect(() => {
+    const handleEscKey = (event) => {
+      if (event.key === 'Escape' && modalAbierto) {
+        cerrarModal();
+      }
+    };
+
+    if (modalAbierto) {
+      document.addEventListener('keydown', handleEscKey);
+    }
+
+    return () => {
+      document.removeEventListener('keydown', handleEscKey);
+    };
+  }, [modalAbierto]);
+
+  // ========== COMPONENTE TARJETA MINIMALISTA ==========
+
+  // Componente para tarjeta de actividad minimalista (similar a DirectivoDashboard)
+  const TarjetaActividadMinimalista = ({ actividad }) => {
+    return (
+      <div className="actividad-minimalista-card">
+        <div className="actividad-minimalista-content">
+          <div className="actividad-minimalista-info">
+            <h3>{actividad.titulo}</h3>
+            <div className="actividad-minimalista-metadata">
+              <span className="actividad-minimalista-creador">
+                👤 {actividad.creado_por_nombre || 'Sistema'}
+              </span>
+              <span className="actividad-minimalista-fecha">
+                📅 {new Date(actividad.fecha_inicio).toLocaleDateString('es-ES', { 
+                  day: '2-digit', 
+                  month: 'short', 
+                  year: 'numeric' 
+                })}
+              </span>
+              {getEstadoBadge(actividad.estado)}
+            </div>
+          </div>
+          
+          <div className="actividad-minimalista-actions">
+            <button 
+              className="btn btn-primary btn-small"
+              onClick={() => abrirModalActividad(actividad)}
+            >
+              👁️ Ver detalles
+            </button>
+            
+            {actividad.creado_por_id === user.id && (
+              <button
+                className="btn btn-danger btn-small"
+                onClick={() => eliminarActividad(actividad.id, actividad.titulo)}
+                title="Eliminar esta actividad"
+                style={{ marginLeft: '10px' }}
+              >
+                🗑️
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   if (!user) {
     return (
       <div className="loading-container" style={{ height: '100vh' }}>
@@ -534,43 +614,110 @@ const PersonalDashboard = ({ user }) => {
 
   return (
     <div className="dashboard-container">
+      {/* CABECERA CORREGIDA (estilo Directivo) - MANTENIENDO EL ESTILO ORIGINAL */}
       <div className="dashboard-header">
         <div className="header-left">
           <h1>Panel de Personal</h1>
-          <div className="user-info">
-            <div className="user-avatar-large">
-              {getInitial()}
-            </div>
-            <div className="user-details">
-              <h3>{user.nombre || 'Usuario no identificado'}</h3>
-              <p>{user.puesto || 'Sin puesto'} • {user.direccion_nombre || 'Sin dirección asignada'}</p>
-            </div>
+        </div>
+        
+        <div className="header-center-personal">
+        <div className="user-info-center">
+          <div className="user-avatar-large">
+            {getInitial()}
+          </div>
+          <div className="user-details-center">
+            <h3>{user.nombre || 'Usuario no identificado'}</h3>
+            <p>
+              <span className="user-cargo-center">{user.puesto || 'Sin puesto'}</span>
+              <span className="user-separator-center"> - </span>
+              <span className="user-direccion-center">{user.direccion_nombre || 'Sin dirección asignada'}</span>
+            </p>
           </div>
         </div>
-        <div className="header-right">
-          <button className="btn btn-primary" onClick={() => setShowFormActividad(true)}>
-            + Nueva Actividad
-          </button>
-        </div>
+      </div>
+      
+      <div className="header-right-personal">
+        <button className="btn btn-primary" onClick={() => setShowFormActividad(true)}>
+          + Nueva Actividad
+        </button>
+      </div>
       </div>
 
       <div className="dashboard-content">
+        {/* BANNER MEJORADO */}
+        <div className="dashboard-header-banner">
+          <div className="banner-left">
+            <h2 className="banner-title">📋 Gestión de Actividades</h2>
+            <p className="banner-subtitle">
+              Crea y gestiona actividades para {user.direccion_nombre || 'tu dirección'}
+            </p>
+          </div>
+          
+          <div className="banner-right">
+            <div className="periodo-actual-banner">
+              <span className="periodo-emoji-banner">
+                {periodoActual.periodo === 'enero-abril' ? '❄️' : 
+                 periodoActual.periodo === 'mayo-agosto' ? '🌸' : '🍂'}
+              </span>
+              <div className="periodo-text-banner">
+                <h4>📅 PERÍODO ACTUAL</h4>
+                <p>
+                  Año {periodoActual.anio} • 
+                  {periodoActual.periodo === 'enero-abril' ? ' Enero - Abril' : 
+                   periodoActual.periodo === 'mayo-agosto' ? ' Mayo - Agosto' : ' Septiembre - Diciembre'}
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+        
+        {/* ESTADÍSTICAS CON ICONOS */}
+        <div className="dashboard-stats">
+          <div className="stat-card" onClick={() => {
+            toast.info(`${actividades.length} actividades en total`);
+          }}>
+            <span className="stat-number">{actividades.length}</span>
+            <span className="stat-label">Total Actividades</span>
+            <div className="stat-icon">📋</div>
+          </div>
+          
+          <div className="stat-card" onClick={() => {
+            const creadasPorMi = actividades.filter(a => a.creado_por_id === user.id).length;
+            toast.info(`${creadasPorMi} actividades creadas por ti`);
+          }}>
+            <span className="stat-number">
+              {actividades.filter(a => a.creado_por_id === user.id).length}
+            </span>
+            <span className="stat-label">Creadas por mí</span>
+            <div className="stat-icon">👤</div>
+          </div>
+          
+          <div className="stat-card" onClick={() => {
+            const completadas = actividades.filter(a => a.estado === 'completada').length;
+            toast.info(`${completadas} actividades completadas`);
+          }}>
+            <span className="stat-number">
+              {actividades.filter(a => a.estado === 'completada').length}
+            </span>
+            <span className="stat-label">Completadas</span>
+            <div className="stat-icon">✅</div>
+          </div>
+          
+          <div className="stat-card" onClick={() => {
+            const misPendientes = actividades.filter(a => a.creado_por_id === user.id && a.estado === 'pendiente').length;
+            toast.info(`${misPendientes} de tus actividades están pendientes`);
+          }}>
+            <span className="stat-number">
+              {actividades.filter(a => a.creado_por_id === user.id && a.estado === 'pendiente').length}
+            </span>
+            <span className="stat-label">Mis Pendientes</span>
+            <div className="stat-icon">⏳</div>
+          </div>
+        </div>
+
         <div className="section-header">
           <h2>📋 Mis Actividades</h2>
           <p>Gestiona las actividades de {user.direccion_nombre || 'tu dirección'}</p>
-          
-          {/* Indicador del año y período actual */}
-          <div className="periodo-actual-indicator">
-            <div className="periodo-actual-indicator-icon">
-              {periodoActual.periodo === 'enero-abril' ? '❄️' : 
-               periodoActual.periodo === 'mayo-agosto' ? '🌸' : '🍂'}
-            </div>
-            <div className="periodo-actual-indicator-text">
-              <h4>📅 PERÍODO ACTUAL</h4>
-              <p>Año {periodoActual.anio} • {periodoActual.periodo === 'enero-abril' ? 'Enero - Abril' : 
-                 periodoActual.periodo === 'mayo-agosto' ? 'Mayo - Agosto' : 'Septiembre - Diciembre'}</p>
-            </div>
-          </div>
         </div>
 
         {error ? (
@@ -596,17 +743,8 @@ const PersonalDashboard = ({ user }) => {
           </div>
         ) : (
           <div className="periodos-container">
-            {/* Controles para expandir/colapsar todos */}
             <div className="periodos-controls">
               <h3>📅 Actividades por Año y Período</h3>
-              <div className="periodos-buttons">
-                <button className="btn btn-small" onClick={expandirTodos}>
-                  ▶️ Expandir Todos
-                </button>
-                <button className="btn btn-small" onClick={colapsarTodos}>
-                  ◀️ Colapsar Todos
-                </button>
-              </div>
             </div>
 
             {/* Mostrar años con actividades */}
@@ -674,130 +812,12 @@ const PersonalDashboard = ({ user }) => {
                             
                             {expansiones.periodos[`${añoData.anio}-${periodoKey}`] && (
                               <div className="periodo-acordeon-content">
-                                <div className="actividades-grid">
+                                <div className="actividades-lista-minimalista">
                                   {periodoData.actividades.map(actividad => (
-                                    <div key={actividad.id} className="actividad-card">
-                                      <div className="actividad-header">
-                                        <h3>{actividad.titulo}</h3>
-                                        <div className="actividad-actions">
-                                          {getEstadoBadge(actividad.estado)}
-                                          
-                                          <div className="dropdown-estados">
-                                            <select 
-                                              value={actividad.estado}
-                                              onChange={(e) => updateEstadoActividad(actividad.id, e.target.value)}
-                                              className="estado-select"
-                                            >
-                                              <option value="pendiente">Pendiente</option>
-                                              <option value="en_progreso">En Progreso</option>
-                                              <option value="completada">Completada</option>
-                                            </select>
-                                          </div>
-                                          
-                                          {actividad.creado_por_id === user.id && (
-                                            <button
-                                              className="btn btn-danger btn-small"
-                                              onClick={() => eliminarActividad(actividad.id, actividad.titulo)}
-                                              title="Eliminar esta actividad"
-                                            >
-                                              🗑️ Eliminar
-                                            </button>
-                                          )}
-                                        </div>
-                                      </div>
-                                      
-                                      <div className="actividad-body">
-                                        <p className="actividad-descripcion">{actividad.descripcion || 'Sin descripción'}</p>
-                                        
-                                        {/* NUEVO: Mostrar tipo de actividad */}
-                                        <div className="actividad-meta">
-                                          <div className="meta-row">
-                                            <div className="meta-item">
-                                              <span className="meta-label">📌 Tipo:</span>
-                                              <span className="meta-value">
-                                                {actividad.tipo_actividad || 'No especificado'}
-                                              </span>
-                                            </div>
-                                          </div>
-                                          
-                                          <div className="meta-row">
-                                            <div className="meta-item">
-                                              <span className="meta-label">📅 Inicio:</span>
-                                              <span className="meta-value">{formatDate(actividad.fecha_inicio)}</span>
-                                            </div>
-                                            
-                                            <div className="meta-item">
-                                              <span className="meta-label">📅 Fin:</span>
-                                              <span className="meta-value">{formatDate(actividad.fecha_fin)}</span>
-                                              {actividad.fecha_fin && (
-                                                <span className={`dias-restantes ${new Date(actividad.fecha_fin) < new Date() ? 'finalizado' : 'activo'}`}>
-                                                  {getDiasRestantes(actividad.fecha_fin)}
-                                                </span>
-                                              )}
-                                            </div>
-                                          </div>
-                                          
-                                          <div className="meta-row">
-                                            <div className="meta-item">
-                                              <span className="meta-label">👤 Creado por:</span>
-                                              <span className="meta-value">{actividad.creado_por_nombre || 'Sistema'}</span>
-                                            </div>
-                                            
-                                            <div className="meta-item">
-                                              <span className="meta-label">📅 Publicado el:</span>
-                                              <span className="meta-value">{formatDate(actividad.fecha_creacion)}</span>
-                                            </div>
-                                          </div>
-                                        </div>
-                                        
-                                        {actividad.imagenes && actividad.imagenes.length > 0 && (
-                                          <div className="actividad-imagenes-carousel">
-                                            <div className="carousel-header">
-                                              <span className="carousel-title">Galería de imágenes ({actividad.imagenes.length})</span>
-                                            </div>
-                                            <Slider {...carouselSettings} className="imagenes-carousel">
-                                              {actividad.imagenes.map((img, index) => (
-                                                <div key={index} className="carousel-slide">
-                                                  <div className="slide-content">
-                                                    <img 
-                                                      src={img.url || '/placeholder.jpg'} 
-                                                      alt={`Imagen ${index + 1} - ${actividad.titulo}`}
-                                                      className="carousel-image"
-                                                    />
-                                                    <div className="image-caption">
-                                                      <span>Imagen {index + 1} de {actividad.imagenes.length}</span>
-                                                    </div>
-                                                  </div>
-                                                </div>
-                                              ))}
-                                            </Slider>
-                                            <div className="carousel-thumbnails">
-                                              {actividad.imagenes.slice(0, 5).map((img, index) => (
-                                                <div key={index} className="thumbnail-item">
-                                                  <img 
-                                                    src={img.url || '/placeholder.jpg'} 
-                                                    alt={`Miniatura ${index + 1}`}
-                                                    className="thumbnail-image"
-                                                  />
-                                                </div>
-                                              ))}
-                                            </div>
-                                          </div>
-                                        )}
-                                      </div>
-                                      
-                                      <div className="actividad-footer">
-                                        <span className="direccion-tag">
-                                          🏛️ {actividad.direccion_nombre || 'Sin dirección'}
-                                        </span>
-                                        
-                                        {actividad.creado_por_id === user.id && (
-                                          <span className="creador-tag">
-                                            ✏️ Creada por mí
-                                          </span>
-                                        )}
-                                      </div>
-                                    </div>
+                                    <TarjetaActividadMinimalista 
+                                      key={actividad.id} 
+                                      actividad={actividad} 
+                                    />
                                   ))}
                                 </div>
                               </div>
@@ -810,89 +830,192 @@ const PersonalDashboard = ({ user }) => {
               ))}
           </div>
         )}
+      </div>
 
-        {/* Resumen por años */}
-        {actividades.length > 0 && (
-          <div className="años-resumen">
-            <h3>📊 Resumen por Años</h3>
-            <div className="años-resumen-grid">
-              {agrupacionPorAnio
-                .filter(añoData => añoData.actividades.length > 0)
-                .map(añoData => (
-                  <div 
-                    key={añoData.anio} 
-                    className={`año-resumen-card ${añoData.anio === periodoActual.anio ? 'año-actual' : ''}`}
-                    onClick={() => {
-                      toggleAnioExpandido(añoData.anio);
-                    }}
-                  >
-                    <div className="año-resumen-header">
-                      <span className="año-resumen-year">{añoData.anio}</span>
-                      {añoData.anio === periodoActual.anio && (
-                        <span className="año-resumen-actual">ACTUAL</span>
-                      )}
-                    </div>
-                    
-                    <div className="año-resumen-stats">
-                      <span className="año-resumen-count">{añoData.actividades.length}</span>
-                      <span className="año-resumen-percent">
-                        {actividades.length > 0 
-                          ? `${((añoData.actividades.length / actividades.length) * 100).toFixed(1)}%`
-                          : '0%'}
-                      </span>
-                    </div>
-                    
-                    <div className="año-resumen-periodos">
-                      {Object.entries(añoData.periodos)
-                        .filter(([_, periodoData]) => periodoData.actividades.length > 0)
-                        .sort(([keyA, a], [keyB, b]) => a.orden - b.orden)
-                        .map(([periodoKey, periodoData]) => (
-                          <div 
-                            key={periodoKey} 
-                            className={`año-resumen-periodo ${añoData.anio === periodoActual.anio && periodoKey === periodoActual.periodo ? 'año-resumen-periodo-actual' : ''}`}
-                          >
-                            <span className="periodo-resumen-label">
-                              <span>{periodoData.emoji}</span>
-                              <span>{periodoData.label}</span>
-                            </span>
-                            <span className="periodo-resumen-count">{periodoData.actividades.length}</span>
+      {/* Modal de Actividad */}
+      {modalAbierto && actividadSeleccionada && (
+        <div className="actividad-modal-overlay" onClick={cerrarModal}>
+          <div className="actividad-modal-container" onClick={(e) => e.stopPropagation()}>
+            <button className="modal-close-btn" onClick={cerrarModal}>
+              ✕
+            </button>
+            
+            <div className="modal-header">
+              <h2>{actividadSeleccionada.titulo}</h2>
+              <div className="modal-header-badges">
+                {getEstadoBadge(actividadSeleccionada.estado)}
+                <span className={`tipo-badge-modal ${actividadSeleccionada.creado_por_tipo}`}>
+                  {actividadSeleccionada.creado_por_tipo === 'personal' ? '📝 Personal' : '👔 Directivo'}
+                </span>
+              </div>
+            </div>
+            
+            <div className="modal-body">
+              <div className="modal-creador-info">
+                <span className="creador-label">👤 Creador:</span>
+                <span className="creador-valor">
+                  {actividadSeleccionada.creado_por_nombre || 'Sistema'}
+                </span>
+                <span className="creador-separator">•</span>
+                <span className="creador-direccion">
+                  🏛️ {actividadSeleccionada.direccion_nombre || 'Sin dirección'}
+                </span>
+              </div>
+              
+              <div className="modal-descripcion">
+                <h4>📄 Descripción:</h4>
+                <p>{actividadSeleccionada.descripcion || 'Sin descripción'}</p>
+              </div>
+              
+              {/* Mostrar tipo de actividad en modal */}
+              <div className="modal-descripcion">
+                <h4>📌 Tipo de Actividad:</h4>
+                <p>{actividadSeleccionada.tipo_actividad || 'No especificado'}</p>
+              </div>
+              
+              {/* Carrusel de imágenes en modal */}
+              {actividadSeleccionada.imagenes && actividadSeleccionada.imagenes.length > 0 && (
+                <div className="modal-imagenes">
+                  <h4>🖼️ Galería de Evidencias ({actividadSeleccionada.imagenes.length})</h4>
+                  <Slider {...carouselSettingsModal} className="modal-carousel">
+                    {actividadSeleccionada.imagenes.map((img, index) => (
+                      <div key={index} className="modal-slide">
+                        <div className="modal-slide-content">
+                          <img 
+                            src={img.url} 
+                            alt={`Evidencia ${index + 1} - ${actividadSeleccionada.titulo}`}
+                            className="modal-image"
+                            onError={(e) => {
+                              e.target.src = '/placeholder.jpg';
+                              e.target.alt = 'Imagen no disponible';
+                            }}
+                          />
+                          <div className="modal-image-info">
+                            <span>Evidencia {index + 1} de {actividadSeleccionada.imagenes.length}</span>
+                            <small>{img.nombre_archivo || 'Sin nombre'}</small>
                           </div>
-                        ))}
+                        </div>
+                      </div>
+                    ))}
+                  </Slider>
+                </div>
+              )}
+              
+              <div className="modal-fechas">
+                <h4>📅 Información de Fechas</h4>
+                <div className="modal-fechas-grid">
+                  <div className="modal-fecha-item">
+                    <div className="modal-fecha-header">
+                      <span className="modal-fecha-icon">📅</span>
+                      <span className="modal-fecha-label">Fecha de creación:</span>
+                    </div>
+                    <div className="modal-fecha-valor">
+                      {formatDate(actividadSeleccionada.fecha_creacion)}
                     </div>
                   </div>
-                ))}
+                  
+                  <div className="modal-fecha-item">
+                    <div className="modal-fecha-header">
+                      <span className="modal-fecha-icon">🚀</span>
+                      <span className="modal-fecha-label">Fecha de inicio:</span>
+                    </div>
+                    <div className="modal-fecha-valor">
+                      {formatDate(actividadSeleccionada.fecha_inicio)}
+                    </div>
+                  </div>
+                  
+                  <div className="modal-fecha-item">
+                    <div className="modal-fecha-header">
+                      <span className="modal-fecha-icon">🏁</span>
+                      <span className="modal-fecha-label">Fecha de fin:</span>
+                    </div>
+                    <div className="modal-fecha-valor">
+                      {formatDate(actividadSeleccionada.fecha_fin)}
+                      {actividadSeleccionada.fecha_fin && (
+                        <span className="modal-dias-restantes">
+                          <span className={`dias-restantes ${new Date(actividadSeleccionada.fecha_fin) < new Date() ? 'finalizado' : 'activo'}`}>
+                            {getDiasRestantes(actividadSeleccionada.fecha_fin)}
+                          </span>
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+              
+              {/* Solo mostrar opciones de estado si es el creador */}
+              {actividadSeleccionada.creado_por_id === user.id && (
+                <div className="modal-actions">
+                  <h4>⚙️ Cambiar Estado:</h4>
+                  <div className="estado-selector-modal">
+                    <div className="estado-botones">
+                      <button 
+                        className={`estado-btn ${actividadSeleccionada.estado === 'pendiente' ? 'activo' : ''}`}
+                        onClick={() => {
+                          updateEstadoActividad(actividadSeleccionada.id, 'pendiente');
+                          setActividadSeleccionada({
+                            ...actividadSeleccionada,
+                            estado: 'pendiente'
+                          });
+                        }}
+                      >
+                        <span className="estado-emoji">⏳</span>
+                        <span className="estado-texto">Pendiente</span>
+                      </button>
+                      <button 
+                        className={`estado-btn ${actividadSeleccionada.estado === 'en_progreso' ? 'activo' : ''}`}
+                        onClick={() => {
+                          updateEstadoActividad(actividadSeleccionada.id, 'en_progreso');
+                          setActividadSeleccionada({
+                            ...actividadSeleccionada,
+                            estado: 'en_progreso'
+                          });
+                        }}
+                      >
+                        <span className="estado-emoji">🚀</span>
+                        <span className="estado-texto">En Progreso</span>
+                      </button>
+                      <button 
+                        className={`estado-btn ${actividadSeleccionada.estado === 'completada' ? 'activo' : ''}`}
+                        onClick={() => {
+                          updateEstadoActividad(actividadSeleccionada.id, 'completada');
+                          setActividadSeleccionada({
+                            ...actividadSeleccionada,
+                            estado: 'completada'
+                          });
+                        }}
+                      >
+                        <span className="estado-emoji">✅</span>
+                        <span className="estado-texto">Completada</span>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+            
+            <div className="modal-footer">
+              <button className="btn btn-secondary" onClick={cerrarModal}>
+                Cerrar
+              </button>
+              
+              {actividadSeleccionada.creado_por_id === user.id && (
+                <button 
+                  className="btn btn-danger"
+                  onClick={() => {
+                    if (window.confirm(`¿Eliminar la actividad "${actividadSeleccionada.titulo}"?`)) {
+                      eliminarActividad(actividadSeleccionada.id, actividadSeleccionada.titulo);
+                      cerrarModal();
+                    }
+                  }}
+                >
+                  🗑️ Eliminar Actividad
+                </button>
+              )}
             </div>
           </div>
-        )}
-
-        <div className="dashboard-stats">
-          <div className="stat-card">
-            <span className="stat-number">{actividades.length}</span>
-            <span className="stat-label">Total Actividades</span>
-          </div>
-          
-          <div className="stat-card">
-            <span className="stat-number">
-              {actividades.filter(a => a.creado_por_id === user.id).length}
-            </span>
-            <span className="stat-label">Creadas por mí</span>
-          </div>
-          
-          <div className="stat-card">
-            <span className="stat-number">
-              {actividades.filter(a => a.estado === 'completada').length}
-            </span>
-            <span className="stat-label">Completadas</span>
-          </div>
-          
-          <div className="stat-card">
-            <span className="stat-number">
-              {actividades.filter(a => a.creado_por_id === user.id && a.estado === 'pendiente').length}
-            </span>
-            <span className="stat-label">Mis Pendientes</span>
-          </div>
         </div>
-      </div>
+      )}
 
       {/* Modal para nueva actividad */}
       {showFormActividad && (
@@ -918,7 +1041,7 @@ const PersonalDashboard = ({ user }) => {
                 />
               </div>
               
-              {/* NUEVO: Campo para tipo de actividad (texto libre) */}
+              {/* Campo para tipo de actividad (texto libre) */}
               <div className="form-group">
                 <label>Tipo de Actividad *</label>
                 <input
@@ -939,7 +1062,7 @@ const PersonalDashboard = ({ user }) => {
               </div>
               
               <div className="form-group">
-                <label>Descripción (Máximo 150 palabras)</label>
+                <label>Descripción (Máximo 200 palabras)</label>
                 <textarea
                   name="descripcion"
                   value={formData.descripcion}

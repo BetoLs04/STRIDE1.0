@@ -775,20 +775,11 @@ const PanelComunicadosAdmin = ({ admin, onClose }) => {
       <div className="panel-header">
         <div className="header-content">
           <h2>📢 Administración de Comunicados</h2>
-          <p>Gestiona los comunicados oficiales de la universidad</p>
         </div>
         <div className="header-actions">
           <button className="btn btn-primary" onClick={() => { resetForm(); setShowForm(!showForm); }}>
             {showForm ? '← Volver a lista' : '+ Nuevo Comunicado'}
           </button>
-          <button className="btn btn-secondary" onClick={fetchComunicadosAdmin} disabled={loading}>
-            {loading ? '🔄 Cargando...' : '🔄 Actualizar'}
-          </button>
-          {onClose && (
-            <button className="btn btn-accent" onClick={onClose}>
-              ← Volver al Dashboard
-            </button>
-          )}
         </div>
       </div>
 
